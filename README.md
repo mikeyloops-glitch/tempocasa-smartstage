@@ -51,7 +51,8 @@ Create `.env.local` from `.env.example`.
 2. Set `OPENAI_API_KEY`.
 3. Keep `OPENAI_IMAGE_MODEL=gpt-image-1` unless your account is configured for another image editing model.
 4. Keep `OPENAI_TOUR_MODEL=gpt-4o-mini` for the virtual-tour capture QA endpoint, or replace it with your preferred OpenAI text/vision model.
-5. Keep `OPENAI_IMAGE_QUALITY=medium` for faster Vercel demos; switch to `high` only when render quality matters more than speed.
+5. Keep `OPENAI_GEOMETRY_MODEL=gpt-4o-mini` and `OPENAI_GEOMETRY_ANALYSIS=true` to run the SmartStage irregular-wall preflight before image editing.
+6. Keep `OPENAI_IMAGE_QUALITY=medium` for faster Vercel demos; switch to `high` only when render quality matters more than speed.
 
 ### Cloudinary
 

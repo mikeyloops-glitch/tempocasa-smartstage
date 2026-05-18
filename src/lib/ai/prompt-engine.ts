@@ -6,14 +6,15 @@ import {
   stagingStyles,
   styleDescriptors
 } from "@/lib/staging-options";
-import type { GenerationMode, PromptPackage, RoomType, StagingLevel, StagingStyle } from "@/lib/types";
+import type { GenerationMode, GeometryAnalysis, PromptPackage, RoomType, StagingLevel, StagingStyle } from "@/lib/types";
 
 const preservationRules = [
   "Treat the uploaded image as the locked reference frame and preserve the same crop, aspect ratio, camera position, lens perspective, room proportions, and horizon lines.",
   "CAMERA LOCK: keep the exact same camera distance, angle, lens feel, horizon, vertical lines, framing, crop, visible edges, and aspect ratio. Do not zoom out, zoom in, tilt, pan, or make the room appear farther away.",
   "Preserve exact walls, windows, flooring, doors, ceiling height, architectural trim, structural columns, and natural lighting direction.",
+  "Preserve irregular architecture exactly: curved walls, angled walls, bay windows, non-square corners, sloped ceilings, alcoves, niches, diagonal partitions, and skewed perspective lines must keep their original shape and position.",
   "Preserve cabinetry, counters, appliances, plumbing fixtures, and built-ins only when the selected workflow is not explicitly removing them.",
-  "Do not create new windows, move walls, alter floor patterns, change ceiling shape, change camera angle, widen the room, add side borders, or distort architectural trim.",
+  "Do not create new windows, move walls, square off curved or angled walls, straighten non-orthogonal corners, alter floor patterns, change ceiling shape, change camera angle, widen the room, add side borders, or distort architectural trim.",
   "Only modify the requested movable contents, furnishing, styling, visible finishes, or removals while keeping the original room shell aligned to the source photo.",
   "Add only believable real furniture or finishes with correct scale, contact shadows, and plausible placement.",
   "Maintain professional real-estate photography aesthetics with crisp textures and trustworthy listing-ready realism.",
@@ -42,6 +43,13 @@ const negativePromptItems = [
   "zoomed in camera",
   "changed focal length",
   "side borders",
+  "squared off curved wall",
+  "straightened angled wall",
+  "flattened bay window",
+  "lost alcove",
+  "removed niche",
+  "orthogonalized irregular room",
+  "generic rectangular room",
   "changed flooring",
   "bent ceiling lines",
   "cartoon furniture",
@@ -62,6 +70,8 @@ const referenceLockRules = [
   "Return the same room, same camera viewpoint, same camera distance, same crop, same visible frame edges, same aspect ratio, same perspective, same wall/floor/ceiling geometry, and same architectural layout.",
   "The generated image should behave like a precise duplicate plate of the uploaded shot with only the requested content changed.",
   "Do not reinterpret the space, rotate the camera, zoom in or out, crop differently, invent adjacent rooms, add openings, remove openings, change focal length, add side margins, or change the location of windows, doors, structural beams, structural columns, moulding, sockets, or floor direction.",
+  "IRREGULAR GEOMETRY LOCK: if the source photo contains curved walls, angled walls, slanted partitions, non-square corners, bay windows, alcoves, niches, partial-height walls, arched openings, diagonal ceiling planes, or asymmetrical room outlines, preserve those exact contours. Do not normalize the room into a rectangular box.",
+  "Furniture and finishes must conform to the detected wall angles and curves: align sofas, counters, rugs, beds, cabinets, and decor to the original perspective and wall shape rather than forcing square showroom geometry.",
   "The output must line up with the uploaded before photo in a before/after comparison slider as closely as possible.",
   "If a requested change conflicts with preserving the reference image, preserve the reference image and apply the smallest realistic change possible."
 ];
@@ -157,6 +167,46 @@ function buildModeExecutionInstruction(mode: GenerationMode) {
   ].join(" ");
 }
 
+function normalizeGeometryAnalysis(value?: GeometryAnalysis | null): GeometryAnalysis | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return {
+    hasIrregularGeometry: Boolean(value.hasIrregularGeometry),
+    confidence: Math.max(0, Math.min(1, Number.isFinite(value.confidence) ? value.confidence : 0)),
+    shapeSummary: value.shapeSummary.trim().replace(/\s+/g, " ").slice(0, 700),
+    protectedArchitecture: value.protectedArchitecture.map((item) => item.trim()).filter(Boolean).slice(0, 10),
+    stagingGuidance: value.stagingGuidance.map((item) => item.trim()).filter(Boolean).slice(0, 10),
+    riskFlags: value.riskFlags.map((item) => item.trim()).filter(Boolean).slice(0, 8)
+  };
+}
+
+function buildGeometryLockInstruction(geometryAnalysis?: GeometryAnalysis) {
+  const geometry = normalizeGeometryAnalysis(geometryAnalysis);
+
+  const baseRules = [
+    "Before staging, inspect the source photo for irregular room geometry: angled walls, curved walls, bowed or rounded partitions, diagonal corners, bay windows, alcoves, niches, sloped ceilings, arched openings, and asymmetrical floor outlines.",
+    "If any irregular geometry exists, preserve it exactly as the structural reference. The staged image must keep the same wall curvature, angle, corner position, floor boundary, ceiling line, and visible perspective.",
+    "Do not simplify unusual walls into a flat rectangular room. Do not straighten, square off, widen, crop out, hide, or replace the irregular architecture.",
+    "Place furniture around the original geometry with believable clearance and contact shadows. Furniture may follow curved or angled wall lines, but it must not cover the shape in a way that changes the room."
+  ];
+
+  if (!geometry) {
+    return baseRules.join(" ");
+  }
+
+  const detectedRules = [
+    `Geometry preflight: ${geometry.hasIrregularGeometry ? "irregular room geometry detected" : "no major irregular geometry detected, but preserve all observed contours"} with confidence ${geometry.confidence.toFixed(2)}.`,
+    geometry.shapeSummary ? `Source shape summary: ${geometry.shapeSummary}.` : "",
+    geometry.protectedArchitecture.length > 0 ? `Protected architecture to preserve exactly: ${geometry.protectedArchitecture.join("; ")}.` : "",
+    geometry.stagingGuidance.length > 0 ? `Geometry-aware staging guidance: ${geometry.stagingGuidance.join("; ")}.` : "",
+    geometry.riskFlags.length > 0 ? `Avoid these geometry failure modes: ${geometry.riskFlags.join("; ")}.` : ""
+  ].filter(Boolean);
+
+  return [...baseRules, ...detectedRules].join(" ");
+}
+
 function buildModeContext(input: {
   roomType: RoomType;
   style: StagingStyle;
@@ -193,13 +243,16 @@ export function buildStagingPrompt(input: {
   stagingLevel: StagingLevel;
   generationMode?: GenerationMode;
   customInstructions?: string | null;
+  geometryAnalysis?: GeometryAnalysis | null;
 }) {
   const generationMode = input.generationMode ?? "stage";
   const customInstructions = normalizeCustomInstructions(input.customInstructions);
+  const geometryAnalysis = normalizeGeometryAnalysis(input.geometryAnalysis);
 
   const prompt = [
     "Ultra realistic AI virtual staging for a luxury Italian real-estate listing.",
     referenceLockRules.join(" "),
+    buildGeometryLockInstruction(geometryAnalysis),
     buildModeInstruction(generationMode),
     buildModeContext({ roomType: input.roomType, style: input.style, stagingLevel: input.stagingLevel, generationMode }),
     customInstructions ? `Agent custom instruction: ${customInstructions}. Apply these notes as an additional constraint only when they do not conflict with the strict reference lock, MLS safety, realism, and architecture preservation.` : "",
@@ -218,7 +271,8 @@ export function buildStagingPrompt(input: {
     style: input.style,
     stagingLevel: input.stagingLevel,
     generationMode,
-    customInstructions: customInstructions || undefined
+    customInstructions: customInstructions || undefined,
+    geometryAnalysis
   } satisfies PromptPackage;
 }
 

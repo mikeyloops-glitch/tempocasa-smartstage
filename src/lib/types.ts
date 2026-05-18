@@ -28,6 +28,15 @@ export type StagingLevel = "Light" | "Medium" | "Luxury";
 
 export type GenerationMode = "stage" | "empty" | "custom";
 
+export type GeometryAnalysis = {
+  hasIrregularGeometry: boolean;
+  confidence: number;
+  shapeSummary: string;
+  protectedArchitecture: string[];
+  stagingGuidance: string[];
+  riskFlags: string[];
+};
+
 export type PromptPackage = {
   prompt: string;
   negativePrompt: string;
@@ -37,6 +46,7 @@ export type PromptPackage = {
   stagingLevel: StagingLevel;
   generationMode: GenerationMode;
   customInstructions?: string;
+  geometryAnalysis?: GeometryAnalysis;
 };
 
 export type ProjectRecord = {
@@ -55,6 +65,7 @@ export type ProjectRecord = {
   fileSize?: number;
   prompt?: string;
   negativePrompt?: string;
+  geometryAnalysis?: GeometryAnalysis;
 };
 
 export type MediaAsset = {

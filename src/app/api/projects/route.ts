@@ -16,7 +16,17 @@ const projectSchema = z.object({
   fileName: z.string().optional(),
   fileSize: z.number().optional(),
   prompt: z.string().optional(),
-  negativePrompt: z.string().optional()
+  negativePrompt: z.string().optional(),
+  geometryAnalysis: z
+    .object({
+      hasIrregularGeometry: z.boolean(),
+      confidence: z.number(),
+      shapeSummary: z.string(),
+      protectedArchitecture: z.array(z.string()),
+      stagingGuidance: z.array(z.string()),
+      riskFlags: z.array(z.string())
+    })
+    .optional()
 });
 
 export async function GET() {

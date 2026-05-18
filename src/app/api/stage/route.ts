@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import OpenAI, { toFile } from "openai";
+import { analyzeRoomGeometry } from "@/lib/ai/geometry-analysis";
 import { buildStagingPrompt, isRoomType, isStagingLevel, isStagingStyle } from "@/lib/ai/prompt-engine";
 import { uploadBufferToCloudinary } from "@/lib/cloudinary";
 import { registerServerProject } from "@/lib/server/project-registry";
@@ -152,12 +153,28 @@ export async function POST(request: Request) {
   const stagingLevel = isStagingLevel(stagingLevelValue) ? stagingLevelValue : "Luxury";
   const generationMode = isGenerationMode(generationModeValue) ? generationModeValue : "stage";
   const customInstructions = typeof customInstructionsValue === "string" ? customInstructionsValue : "";
-  const promptPackage = buildStagingPrompt({ roomType, style, stagingLevel, generationMode, customInstructions });
   const imageBuffer = await fileToBuffer(image);
   const safeBaseName = sanitizeName(
     typeof projectNameValue === "string" && projectNameValue.length > 0 ? projectNameValue : image.name
   );
   const projectId = randomUUID();
+  const openaiConfigured = isOpenAIConfigured();
+  const openai = openaiConfigured ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+  const geometryAnalysis = openai
+    ? await analyzeRoomGeometry({
+        openai,
+        imageBuffer,
+        contentType: image.type
+      })
+    : null;
+  const promptPackage = buildStagingPrompt({
+    roomType,
+    style,
+    stagingLevel,
+    generationMode,
+    customInstructions,
+    geometryAnalysis
+  });
 
   const originalUploadPromise = uploadBufferToCloudinary({
     buffer: imageBuffer,
@@ -171,7 +188,7 @@ export async function POST(request: Request) {
     }
   });
 
-  if (!isOpenAIConfigured()) {
+  if (!openaiConfigured || !openai) {
     const originalUpload = await originalUploadPromise;
     const originalUrl = originalUpload?.secure_url ?? bufferToDataUrl(imageBuffer, image.type);
     const project: ProjectRecord = {
@@ -188,7 +205,8 @@ export async function POST(request: Request) {
       fileName: image.name,
       fileSize: image.size,
       prompt: promptPackage.prompt,
-      negativePrompt: promptPackage.negativePrompt
+      negativePrompt: promptPackage.negativePrompt,
+      geometryAnalysis: promptPackage.geometryAnalysis
     };
 
     registerServerProject(project);
@@ -206,7 +224,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const model = process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-1";
   const imageFile = await toFile(imageBuffer, `${safeBaseName || "room"}.${extensionForType(image.type)}`, {
     type: image.type || "image/png"
@@ -269,7 +286,8 @@ export async function POST(request: Request) {
     fileName: image.name,
     fileSize: image.size,
     prompt: promptPackage.prompt,
-    negativePrompt: promptPackage.negativePrompt
+    negativePrompt: promptPackage.negativePrompt,
+    geometryAnalysis: promptPackage.geometryAnalysis
   };
 
   registerServerProject(project);
