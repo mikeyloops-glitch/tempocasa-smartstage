@@ -20,6 +20,7 @@ type StagingControlsProps = {
 
 const roomIcons = {
   "Living Room": Armchair,
+  "Living Room + Kitchen": Utensils,
   Bedroom: BedDouble,
   Kitchen: CookingPot,
   Bathroom: Bath,

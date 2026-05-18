@@ -67,6 +67,14 @@ const referenceLockRules = [
 ];
 
 function buildRoomSpecificInstruction(roomType: RoomType) {
+  if (roomType === "Living Room + Kitchen") {
+    return [
+      "Open-plan living-kitchen instruction: preserve the exact open-plan architecture, visible kitchen footprint, living zone, window positions, floor direction, wall positions, camera angle, and natural light direction.",
+      "Create a coherent lounge and kitchen relationship: proportionate sofa or seating, believable media or conversation zone, optional dining or island relationship only where the layout supports it, clean counters, integrated practical lighting, and uncluttered circulation.",
+      "Do not block kitchen access, invent walls, move plumbing or appliances, add fake columns, or separate the open-plan space into impossible rooms."
+    ].join(" ");
+  }
+
   if (roomType === "Kitchen") {
     return [
       "Kitchen-specific instruction: transform dated visible cabinetry into a neat luxury minimalist kitchen while preserving the existing room footprint, wall positions, window positions, floor, camera angle, and lighting direction.",
