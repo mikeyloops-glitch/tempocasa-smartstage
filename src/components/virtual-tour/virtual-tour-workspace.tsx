@@ -32,38 +32,40 @@ import {
   VideoOff
 } from "lucide-react";
 import { TempoCasaLogo } from "@/components/brand/tempocasa-logo";
+import { LanguageSelector } from "@/components/i18n/language-selector";
 import { Button } from "@/components/ui/button";
 import { TourModelPreview } from "@/components/virtual-tour/tour-model-preview";
+import { useLanguage } from "@/lib/i18n";
 
 const captureDirections = [
-  { id: "front", label: "12 o'clock wall", angle: 0 },
-  { id: "front-right", label: "1:30 angle", angle: 45 },
-  { id: "right", label: "3 o'clock wall", angle: 90 },
-  { id: "back-right", label: "4:30 angle", angle: 135 },
-  { id: "back", label: "6 o'clock wall", angle: 180 },
-  { id: "back-left", label: "7:30 angle", angle: 225 },
-  { id: "left", label: "9 o'clock wall", angle: 270 },
-  { id: "front-left", label: "10:30 angle", angle: 315 }
+  { id: "front", labelKey: "tour.direction.front", angle: 0 },
+  { id: "front-right", labelKey: "tour.direction.frontRight", angle: 45 },
+  { id: "right", labelKey: "tour.direction.right", angle: 90 },
+  { id: "back-right", labelKey: "tour.direction.backRight", angle: 135 },
+  { id: "back", labelKey: "tour.direction.back", angle: 180 },
+  { id: "back-left", labelKey: "tour.direction.backLeft", angle: 225 },
+  { id: "left", labelKey: "tour.direction.left", angle: 270 },
+  { id: "front-left", labelKey: "tour.direction.frontLeft", angle: 315 }
 ] as const;
 
 const roomTypes = [
-  "Soggiorno",
-  "Soggiorno e cucina",
-  "Camera da letto",
-  "Cucina",
-  "Bagno",
-  "Corridoio",
-  "Studio",
-  "Giardino"
-];
+  { labelKey: "tour.room.living", value: "Soggiorno" },
+  { labelKey: "tour.room.livingKitchen", value: "Soggiorno e cucina" },
+  { labelKey: "tour.room.bedroom", value: "Camera da letto" },
+  { labelKey: "tour.room.kitchen", value: "Cucina" },
+  { labelKey: "tour.room.bathroom", value: "Bagno" },
+  { labelKey: "tour.room.corridor", value: "Corridoio" },
+  { labelKey: "tour.room.office", value: "Studio" },
+  { labelKey: "tour.room.garden", value: "Giardino" }
+] as const;
 
 const backendMilestones = [
-  { label: "Phone 360 capture", status: "Active" },
-  { label: "Walkthrough video source", status: "Active" },
-  { label: "OpenAI capture QA", status: "Active" },
-  { label: "3D WebGL preview", status: "Active" },
-  { label: "SuperSplat viewer", status: "Active" },
-  { label: "Splat reconstruction", status: "Next" }
+  { labelKey: "tour.milestone.phone", statusKey: "tour.status.active" },
+  { labelKey: "tour.milestone.video", statusKey: "tour.status.active" },
+  { labelKey: "tour.milestone.qa", statusKey: "tour.status.active" },
+  { labelKey: "tour.milestone.webgl", statusKey: "tour.status.active" },
+  { labelKey: "tour.milestone.supersplat", statusKey: "tour.status.active" },
+  { labelKey: "tour.milestone.reconstruction", statusKey: "tour.status.next" }
 ];
 
 type CaptureDirection = (typeof captureDirections)[number];
@@ -140,11 +142,12 @@ function createShot(file: File, url: string): CapturedShot {
 }
 
 export function VirtualTourWorkspace() {
+  const { t } = useLanguage();
   const [activeIndex, setActiveIndex] = useState(0);
   const [directionMode, setDirectionMode] = useState<DirectionMode>("clockwise");
   const [captureSourceMode, setCaptureSourceMode] = useState<CaptureSourceMode>("guided-photos");
   const [roomName, setRoomName] = useState("Ingresso principale");
-  const [roomType, setRoomType] = useState(roomTypes[0]);
+  const [roomType, setRoomType] = useState<string>(roomTypes[0].value);
   const [shots, setShots] = useState<Partial<Record<DirectionId, CapturedShot>>>({});
   const [walkthroughVideo, setWalkthroughVideo] = useState<WalkthroughVideo | null>(null);
   const [savedRooms, setSavedRooms] = useState<SavedRoomSet[]>([]);
@@ -187,24 +190,26 @@ export function VirtualTourWorkspace() {
   const hasWalkthroughSource = Boolean(walkthroughVideo);
   const canCreateDraft = hasCompleteGuidedSet || hasWalkthroughSource;
   const coverageStatus = hasCompleteGuidedSet
-    ? "Ready for AI tour draft"
+    ? t("tour.coverage.readyDraft")
     : hasWalkthroughSource
-      ? "Walkthrough video ready"
+      ? t("tour.coverage.videoReady")
       : missingCount <= 2
-        ? "Almost complete"
-        : "Capture in progress";
-  const guideDirectionText = directionMode === "clockwise" ? "move right / clockwise" : "move left / counter-clockwise";
-  const guideText = `Start at 12 o'clock, keep the phone level, place the wall inside the ghost frame, then ${guideDirectionText} to ${activeDirection.label}.`;
+        ? t("tour.coverage.almost")
+        : t("tour.coverage.inProgress");
+  const activeDirectionLabel = t(activeDirection.labelKey);
+  const guideText = t(directionMode === "clockwise" ? "tour.guide.clockwise" : "tour.guide.counterclockwise", {
+    label: activeDirectionLabel
+  });
   const tourPanels = useMemo(
     () =>
       orderedDirections.map((direction) => ({
         angle: direction.angle,
         captured: Boolean(shots[direction.id]),
         id: direction.id,
-        label: direction.label,
+        label: t(direction.labelKey),
         url: shots[direction.id]?.url
       })),
-    [orderedDirections, shots]
+    [orderedDirections, shots, t]
   );
 
   const manifest = useMemo(
@@ -233,7 +238,7 @@ export function VirtualTourWorkspace() {
       },
       shots: orderedDirections.map((direction) => ({
         angle: direction.angle,
-        label: direction.label,
+        label: t(direction.labelKey),
         captured: Boolean(shots[direction.id]),
         fileName: shots[direction.id]?.fileName ?? null,
         size: shots[direction.id]?.size ?? null
@@ -246,7 +251,7 @@ export function VirtualTourWorkspace() {
         type: room.type
       }))
     }),
-    [capturedCredits, captureSourceMode, coverageStatus, directionMode, orderedDirections, roomName, roomType, savedRooms, shots, splatUrl, superSplatViewerUrl, walkthroughVideo]
+    [capturedCredits, captureSourceMode, coverageStatus, directionMode, orderedDirections, roomName, roomType, savedRooms, shots, splatUrl, superSplatViewerUrl, t, walkthroughVideo]
   );
 
   function addShotFromFile(file: File) {
@@ -327,7 +332,7 @@ export function VirtualTourWorkspace() {
   async function startCamera() {
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraStatus("blocked");
-      setCameraError("Camera preview is not available in this browser. Use Upload or the device picker.");
+      setCameraError(t("upload.errorCameraCapture"));
       return;
     }
 
@@ -356,7 +361,7 @@ export function VirtualTourWorkspace() {
     } catch (error) {
       console.error("Virtual tour camera could not start", error);
       setCameraStatus("blocked");
-      setCameraError("Camera access was blocked or unavailable. Allow camera permission, then retry.");
+      setCameraError(t("upload.errorCameraBlocked"));
     }
   }
 
@@ -388,7 +393,7 @@ export function VirtualTourWorkspace() {
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
 
     if (!blob) {
-      setCameraError("Camera frame could not be captured. Try again.");
+      setCameraError(t("upload.errorCameraCapture"));
       return;
     }
 
@@ -457,18 +462,18 @@ export function VirtualTourWorkspace() {
 
       setAiReport(
         data.report ?? {
-          summary: data.message ?? "3D preview is ready. OpenAI QA returned no additional guidance.",
-          checks: ["All eight angles were captured.", "Use the WebGL preview for this pilot room node."],
-          nextAction: "Save the room node."
+          summary: data.message ?? t("tour.draft.fallback"),
+          checks: [t("tour.draft.sourceReady"), t("tour.draft.previewActive")],
+          nextAction: t("tour.button.saveRoom")
         }
       );
       setDraftStatus("ready");
     } catch {
       setAiReport({
         status: "local_preview_ready",
-        summary: "3D preview is ready locally. OpenAI QA could not be reached from this browser session.",
-        checks: ["All eight angles were captured.", "Use the WebGL preview and save the room node."],
-        nextAction: "Save the room node."
+        summary: t("tour.draft.fallback"),
+        checks: [t("tour.draft.sourceReady"), t("tour.draft.previewActive")],
+        nextAction: t("tour.button.saveRoom")
       });
       setDraftStatus("ready");
     }
@@ -495,16 +500,17 @@ export function VirtualTourWorkspace() {
             <TempoCasaLogo className="sm:hidden" markOnly />
           </Link>
           <div className="flex items-center gap-2">
+            <LanguageSelector />
             <Button asChild variant="secondary" className="hidden sm:inline-flex">
               <Link href="/dashboard#ai-generate">
                 <Sparkles className="size-4" aria-hidden="true" />
-                AI SmartStage
+                {t("tour.nav.smartstage")}
               </Link>
             </Button>
             <Button asChild className="bg-navy-950 text-white hover:bg-navy-900">
               <Link href="/">
                 <ArrowLeft className="size-4" aria-hidden="true" />
-                Home
+                {t("tour.nav.home")}
               </Link>
             </Button>
           </div>
@@ -519,25 +525,25 @@ export function VirtualTourWorkspace() {
             transition={{ duration: 0.5, ease: "easeOut" }}
             className="flex flex-col justify-center"
           >
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-champagne-300">TEMPOCASA AI VIRTUAL TOUR</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-champagne-300">{t("tour.hero.kicker")}</p>
             <h1 className="mt-3 max-w-3xl font-display text-3xl leading-tight tracking-normal sm:text-5xl lg:text-6xl">
-              Guided 360 capture for property walkthroughs.
+              {t("tour.hero.title")}
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-silver-100 sm:text-lg sm:leading-7">
-              Capture each room as a controlled 8-shot set or record one steady walkthrough video, then prepare the media package for AI alignment and a future walkable tour viewer.
+              {t("tour.hero.subtitle")}
             </p>
             <div className="mt-5 grid grid-cols-3 gap-2 sm:mt-7 sm:gap-3">
               <div className="rounded-md border border-white/15 bg-white/10 p-3 sm:p-4">
                 <p className="text-xl font-semibold sm:text-2xl">{capturedCredits}/8</p>
-                <p className="mt-1 text-sm text-silver-100">Current credits</p>
+                <p className="mt-1 text-sm text-silver-100">{t("tour.hero.currentCredits")}</p>
               </div>
               <div className="rounded-md border border-white/15 bg-white/10 p-3 sm:p-4">
                 <p className="text-xl font-semibold sm:text-2xl">{savedRooms.length}</p>
-                <p className="mt-1 text-sm text-silver-100">Saved rooms</p>
+                <p className="mt-1 text-sm text-silver-100">{t("tour.hero.savedRooms")}</p>
               </div>
               <div className="rounded-md border border-white/15 bg-white/10 p-3 sm:p-4">
                 <p className="text-xl font-semibold sm:text-2xl">{totalCredits}</p>
-                <p className="mt-1 text-sm text-silver-100">Total credits</p>
+                <p className="mt-1 text-sm text-silver-100">{t("tour.hero.totalCredits")}</p>
               </div>
             </div>
           </motion.div>
@@ -550,9 +556,9 @@ export function VirtualTourWorkspace() {
           >
             <div className="grid gap-3 sm:grid-cols-2">
               {backendMilestones.map((item) => (
-                <div key={item.label} className="rounded-md border border-white/15 bg-white/10 p-4">
-                  <p className="text-sm font-semibold text-white">{item.label}</p>
-                  <p className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-champagne-300">{item.status}</p>
+                <div key={item.labelKey} className="rounded-md border border-white/15 bg-white/10 p-4">
+                  <p className="text-sm font-semibold text-white">{t(item.labelKey)}</p>
+                  <p className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-champagne-300">{t(item.statusKey)}</p>
                 </div>
               ))}
             </div>
@@ -568,16 +574,16 @@ export function VirtualTourWorkspace() {
                 <Home className="size-5" aria-hidden="true" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-navy-950">Room setup</p>
+                <p className="text-sm font-semibold text-navy-950">{t("tour.setup.title")}</p>
                 <p className="text-xs text-charcoal-800">{coverageStatus}</p>
               </div>
             </div>
 
-            <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-charcoal-800">Capture option</p>
+            <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-charcoal-800">{t("tour.setup.captureOption")}</p>
             <div className="mt-3 grid grid-cols-1 gap-2">
               {[
-                { id: "guided-photos" as const, label: "Guided photos", detail: "8 locked angles for each room." },
-                { id: "walkthrough-video" as const, label: "Walkthrough video", detail: "One steady scan for reconstruction." }
+                { id: "guided-photos" as const, detailKey: "tour.setup.guidedPhotosDetail", labelKey: "tour.setup.guidedPhotos" },
+                { id: "walkthrough-video" as const, detailKey: "tour.setup.walkthroughVideoDetail", labelKey: "tour.setup.walkthroughVideo" }
               ].map((option) => {
                 const selected = captureSourceMode === option.id;
 
@@ -592,45 +598,45 @@ export function VirtualTourWorkspace() {
                       selected
                         ? "control-selected border-navy-950 bg-navy-950 text-white"
                         : "border-silver-200 bg-white text-charcoal-800 hover:border-silver-300 hover:bg-silver-50 hover:text-navy-950"
-                    ].join(" ")}
+                      ].join(" ")}
                   >
-                    <span className="block text-sm font-semibold">{option.label}</span>
-                    <span className={["mt-1 block text-xs leading-5", selected ? "text-silver-100" : "text-charcoal-800"].join(" ")}>{option.detail}</span>
+                    <span className="block text-sm font-semibold">{t(option.labelKey)}</span>
+                    <span className={["mt-1 block text-xs leading-5", selected ? "text-silver-100" : "text-charcoal-800"].join(" ")}>{t(option.detailKey)}</span>
                   </button>
                 );
               })}
             </div>
 
             <label className="mt-5 block text-xs font-semibold uppercase tracking-[0.18em] text-charcoal-800" htmlFor="room-name">
-              Room name
+              {t("tour.setup.roomName")}
             </label>
             <input
               id="room-name"
               value={roomName}
               onChange={(event) => setRoomName(event.target.value)}
-              placeholder="Soggiorno principale"
+              placeholder={t("tour.setup.roomNamePlaceholder")}
               className="mt-2 min-h-12 w-full rounded-md border border-silver-200 bg-white px-3 text-base text-charcoal-950 outline-none transition focus:border-navy-950 focus:ring-4 focus:ring-champagne-300/30"
             />
 
-            <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-charcoal-800">Tipo di stanza</p>
+            <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-charcoal-800">{t("tour.setup.roomType")}</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
               {roomTypes.map((type) => {
-                const selected = type === roomType;
+                const selected = type.value === roomType;
 
                 return (
                   <button
-                    key={type}
+                    key={type.value}
                     type="button"
                     data-active={selected ? "true" : undefined}
-                    onClick={() => setRoomType(type)}
+                    onClick={() => setRoomType(type.value)}
                     className={[
                       "interactive-surface min-h-12 rounded-md border px-3 py-2 text-left text-sm font-semibold leading-tight",
                       selected
                         ? "control-selected border-navy-950 bg-navy-950 text-white"
-                        : "border-silver-200 bg-white text-charcoal-800 hover:border-silver-300 hover:bg-silver-50 hover:text-navy-950"
+                      : "border-silver-200 bg-white text-charcoal-800 hover:border-silver-300 hover:bg-silver-50 hover:text-navy-950"
                     ].join(" ")}
                   >
-                    <span className="fit-label block">{type}</span>
+                    <span className="fit-label block">{t(type.labelKey)}</span>
                   </button>
                 );
               })}
@@ -640,12 +646,12 @@ export function VirtualTourWorkspace() {
           <div className="rounded-md border border-silver-200 bg-white p-4 shadow-panel">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-navy-950">Capture credits</p>
-                <p className="mt-1 text-xs leading-5 text-charcoal-800">8 credits complete one room node.</p>
+                <p className="text-sm font-semibold text-navy-950">{t("tour.credits.title")}</p>
+                <p className="mt-1 text-xs leading-5 text-charcoal-800">{t("tour.credits.help")}</p>
               </div>
               <div className="rounded-md bg-champagne-100 px-3 py-2 text-right text-navy-950">
                 <p className="text-xl font-semibold">{capturedCredits}</p>
-                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em]">of 8</p>
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em]">{t("tour.credits.of")}</p>
               </div>
             </div>
             <div className="mt-4 h-2 overflow-hidden rounded-full bg-silver-100">
@@ -654,11 +660,11 @@ export function VirtualTourWorkspace() {
             <div className="mt-4 grid grid-cols-2 gap-2">
               <Button variant="secondary" onClick={resetCurrentRoom} disabled={completeCount === 0 && !walkthroughVideo}>
                 <RotateCcw className="size-4" aria-hidden="true" />
-                Reset
+                {t("tour.button.reset")}
               </Button>
               <Button onClick={saveRoomSet} disabled={!canCreateDraft}>
                 <Save className="size-4" aria-hidden="true" />
-                Save room
+                {t("tour.button.saveRoom")}
               </Button>
             </div>
           </div>
@@ -668,9 +674,9 @@ export function VirtualTourWorkspace() {
           <div className="rounded-md border border-silver-200 bg-white p-4 shadow-panel sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-champagne-500">Guided 360 Capture</p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-normal text-navy-950 sm:text-3xl">{activeDirection.label}</h2>
-                <p className="mt-1 text-sm text-charcoal-800">{activeDirection.angle} deg position</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-champagne-500">{t("tour.guided.kicker")}</p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-normal text-navy-950 sm:text-3xl">{activeDirectionLabel}</h2>
+                <p className="mt-1 text-sm text-charcoal-800">{t("tour.guided.position", { angle: activeDirection.angle })}</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <input
@@ -691,26 +697,26 @@ export function VirtualTourWorkspace() {
                 {cameraStatus === "active" ? (
                   <Button onClick={captureLiveShot}>
                     <ScanLine className="size-4" aria-hidden="true" />
-                    Capture angle
+                    {t("tour.button.captureAngle")}
                   </Button>
                 ) : (
                   <Button onClick={startCamera} disabled={cameraStatus === "starting"}>
                     {cameraStatus === "starting" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Video className="size-4" aria-hidden="true" />}
-                    Live camera
+                    {t("tour.button.liveCamera")}
                   </Button>
                 )}
                 <Button variant="secondary" onClick={() => captureInputRef.current?.click()}>
                   <Camera className="size-4" aria-hidden="true" />
-                  Device picker
+                  {t("tour.button.devicePicker")}
                 </Button>
                 <Button variant="secondary" onClick={() => uploadInputRef.current?.click()}>
                   <UploadCloud className="size-4" aria-hidden="true" />
-                  Upload
+                  {t("tour.button.upload")}
                 </Button>
                 {cameraStatus === "active" ? (
                   <Button variant="secondary" onClick={stopCamera}>
                     <VideoOff className="size-4" aria-hidden="true" />
-                    Stop
+                    {t("tour.button.stop")}
                   </Button>
                 ) : null}
               </div>
@@ -736,7 +742,7 @@ export function VirtualTourWorkspace() {
                   ].join(" ")}
                 >
                   <RotateCw className="size-4" aria-hidden="true" />
-                  Right
+                  {t("tour.button.right")}
                 </button>
                 <button
                   type="button"
@@ -753,7 +759,7 @@ export function VirtualTourWorkspace() {
                   ].join(" ")}
                 >
                   <RotateCcw className="size-4" aria-hidden="true" />
-                  Left
+                  {t("tour.button.left")}
                 </button>
               </div>
             </div>
@@ -781,7 +787,7 @@ export function VirtualTourWorkspace() {
                     <div className="pointer-events-none absolute inset-0">
                       <div className="absolute inset-x-8 bottom-20 top-12 rounded-md border-2 border-white/80 shadow-[0_0_0_999px_rgba(17,20,24,0.18),0_0_32px_rgba(255,255,255,0.35)]" />
                       <div className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-navy-950">
-                        12 o&apos;clock start
+                        {t("tour.guide.start")}
                       </div>
                       <div
                         className="absolute left-1/2 top-1/2 h-[72%] w-px origin-bottom bg-champagne-300/80"
@@ -790,14 +796,14 @@ export function VirtualTourWorkspace() {
                         <div className="absolute -top-2 left-1/2 size-4 -translate-x-1/2 rounded-full border-2 border-white bg-champagne-300 shadow-soft" />
                       </div>
                       <div className="absolute bottom-3 left-3 right-3 rounded-md border border-white/15 bg-charcoal-950/78 p-3 text-white backdrop-blur">
-                        <p className="text-sm font-semibold">{activeDirection.label}</p>
+                        <p className="text-sm font-semibold">{activeDirectionLabel}</p>
                         <p className="mt-1 text-xs leading-5 text-silver-100">{guideText}</p>
                       </div>
                     </div>
                   ) : activeShot ? (
                     <img
                       src={activeShot.url}
-                      alt={`${activeDirection.label} capture`}
+                      alt={`${activeDirectionLabel} capture`}
                       className="absolute inset-0 size-full object-contain"
                       draggable={false}
                     />
@@ -807,8 +813,8 @@ export function VirtualTourWorkspace() {
                         <div className="mx-auto grid size-16 place-items-center rounded-md bg-white/10">
                           <ImagePlus className="size-8" aria-hidden="true" />
                         </div>
-                        <p className="mt-4 text-lg font-semibold">No shot captured</p>
-                        <p className="mt-2 text-sm leading-6 text-silver-100">Select camera or upload for this angle.</p>
+                        <p className="mt-4 text-lg font-semibold">{t("tour.capture.noShot")}</p>
+                        <p className="mt-2 text-sm leading-6 text-silver-100">{t("tour.capture.noShotHelp")}</p>
                       </div>
                     </div>
                   )}
@@ -821,7 +827,7 @@ export function VirtualTourWorkspace() {
                       onClick={removeActiveShot}
                       className="interactive-surface absolute bottom-3 right-3 rounded-md border border-white/20 bg-white/90 px-3 py-2 text-sm font-semibold text-navy-950 hover:bg-white"
                     >
-                      Replace
+                      {t("tour.capture.replace")}
                     </button>
                   ) : null}
                 </div>
@@ -843,7 +849,7 @@ export function VirtualTourWorkspace() {
                       <button
                         key={direction.id}
                         type="button"
-                        aria-label={`Select ${direction.label}`}
+                        aria-label={`Select ${t(direction.labelKey)}`}
                         data-active={selected ? "true" : undefined}
                         onClick={() => setActiveIndex(index)}
                         className={[
@@ -864,7 +870,11 @@ export function VirtualTourWorkspace() {
                 <div className="mt-4 rounded-md border border-silver-200 bg-white p-3">
                   <p className="text-sm font-semibold text-navy-950">{coverageStatus}</p>
                   <p className="mt-1 text-xs leading-5 text-charcoal-800">
-                    {hasCompleteGuidedSet ? "Room set complete." : hasWalkthroughSource ? "Video source ready for reconstruction testing." : `${missingCount} credits still open.`}
+                    {hasCompleteGuidedSet
+                      ? t("tour.coverage.roomComplete")
+                      : hasWalkthroughSource
+                        ? t("tour.coverage.videoReadyDetail")
+                        : t("tour.coverage.creditsOpen", { count: missingCount })}
                   </p>
                   {activeShot ? (
                     <p className="mt-3 text-xs text-charcoal-800">
@@ -879,15 +889,15 @@ export function VirtualTourWorkspace() {
           <div className="rounded-md border border-silver-200 bg-white p-4 shadow-panel sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-champagne-500">Option B</p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-normal text-navy-950">Walkthrough video capture</h2>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-champagne-500">{t("tour.video.kicker")}</p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-normal text-navy-950">{t("tour.video.title")}</h2>
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-charcoal-800">
-                  Use this when it is quicker to walk the property once. Move slowly, keep the phone level, cover each wall, doorway, ceiling edge, and floor reference.
+                  {t("tour.video.body")}
                 </p>
               </div>
               <Button onClick={() => videoInputRef.current?.click()}>
                 <FileVideo className="size-4" aria-hidden="true" />
-                Record / choose video
+                {t("tour.video.record")}
               </Button>
               <input
                 ref={videoInputRef}
@@ -910,8 +920,8 @@ export function VirtualTourWorkspace() {
                         <div className="mx-auto grid size-14 place-items-center rounded-md bg-white/10">
                           <Video className="size-7" aria-hidden="true" />
                         </div>
-                        <p className="mt-4 text-base font-semibold">No walkthrough video selected</p>
-                        <p className="mt-2 text-sm leading-6 text-silver-100">On iPhone or Android this opens the device camera or video picker.</p>
+                        <p className="mt-4 text-base font-semibold">{t("tour.video.noVideo")}</p>
+                        <p className="mt-2 text-sm leading-6 text-silver-100">{t("tour.video.noVideoHelp")}</p>
                       </div>
                     </div>
                   )}
@@ -919,9 +929,9 @@ export function VirtualTourWorkspace() {
               </div>
 
               <div className="rounded-md border border-silver-200 bg-silver-50 p-4">
-                <p className="text-sm font-semibold text-navy-950">Video source package</p>
+                <p className="text-sm font-semibold text-navy-950">{t("tour.video.package")}</p>
                 <p className="mt-2 text-sm leading-6 text-charcoal-800">
-                  The demo stores the source locally and includes its metadata in the exported manifest. A production backend can send this file to a Gaussian-splat reconstruction worker.
+                  {t("tour.video.packageBody")}
                 </p>
                 {walkthroughVideo ? (
                   <div className="mt-4 rounded-md border border-silver-200 bg-white p-3 text-sm text-charcoal-800">
@@ -930,12 +940,12 @@ export function VirtualTourWorkspace() {
                     <p className="mt-1">{walkthroughVideo.capturedAt}</p>
                     <Button variant="secondary" className="mt-3 w-full" onClick={clearWalkthroughVideo}>
                       <RotateCcw className="size-4" aria-hidden="true" />
-                      Clear video
+                      {t("tour.video.clear")}
                     </Button>
                   </div>
                 ) : (
                   <div className="mt-4 rounded-md border border-dashed border-silver-300 bg-white p-3 text-sm leading-6 text-charcoal-800">
-                    Best practice: one continuous slow scan per room, plus extra passes through doorways and corridors for alignment.
+                    {t("tour.video.bestPractice")}
                   </div>
                 )}
               </div>
@@ -946,23 +956,23 @@ export function VirtualTourWorkspace() {
             <div className="rounded-md border border-silver-200 bg-white p-4 shadow-panel sm:p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-navy-950">AI tour draft</p>
-                  <p className="mt-1 text-sm leading-6 text-charcoal-800">Create the first room package after all 8 guided credits are captured or a walkthrough video is selected.</p>
+                  <p className="text-sm font-semibold text-navy-950">{t("tour.draft.title")}</p>
+                  <p className="mt-1 text-sm leading-6 text-charcoal-800">{t("tour.draft.body")}</p>
                 </div>
                 <Button onClick={createTourDraft} disabled={!canCreateDraft || draftStatus === "processing"}>
                   {draftStatus === "processing" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Sparkles className="size-4" aria-hidden="true" />}
-                  {draftStatus === "processing" ? "Preparing" : "Create draft"}
+                  {draftStatus === "processing" ? t("tour.draft.preparing") : t("tour.draft.create")}
                 </Button>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                {["Capture source ready", "OpenAI QA connected", "3D preview active"].map((item, index) => {
+                {["tour.draft.sourceReady", "tour.draft.qaConnected", "tour.draft.previewActive"].map((item, index) => {
                   const ready = (index === 0 && canCreateDraft) || (index === 1 && Boolean(aiReport)) || index === 2;
 
                   return (
                     <div key={item} className="rounded-md border border-silver-200 bg-silver-50 p-3">
                       <div className="flex items-center gap-2">
                         {ready ? <CheckCircle2 className="size-4 text-navy-950" aria-hidden="true" /> : <Eye className="size-4 text-charcoal-800" aria-hidden="true" />}
-                        <p className="text-sm font-semibold text-charcoal-950">{item}</p>
+                        <p className="text-sm font-semibold text-charcoal-950">{t(item)}</p>
                       </div>
                     </div>
                   );
@@ -970,8 +980,8 @@ export function VirtualTourWorkspace() {
               </div>
               {draftStatus === "ready" ? (
                 <div className="mt-4 rounded-md border border-champagne-300 bg-champagne-100 p-4 text-navy-950">
-                  <p className="font-semibold">Draft package ready</p>
-                  <p className="mt-1 text-sm leading-6">{aiReport?.summary ?? "Save this room set, then continue with the next room, corridor, doorway, or exterior position."}</p>
+                  <p className="font-semibold">{t("tour.draft.ready")}</p>
+                  <p className="mt-1 text-sm leading-6">{aiReport?.summary ?? t("tour.draft.fallback")}</p>
                   {aiReport?.checks?.length ? (
                     <ul className="mt-3 space-y-1 text-sm leading-6">
                       {aiReport.checks.slice(0, 4).map((check) => (
@@ -989,8 +999,8 @@ export function VirtualTourWorkspace() {
             <div className="rounded-md border border-silver-200 bg-white p-4 shadow-panel sm:p-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-navy-950">Capture manifest</p>
-                  <p className="mt-1 text-sm leading-6 text-charcoal-800">Export the room metadata for backend testing.</p>
+                  <p className="text-sm font-semibold text-navy-950">{t("tour.manifest.title")}</p>
+                  <p className="mt-1 text-sm leading-6 text-charcoal-800">{t("tour.manifest.body")}</p>
                 </div>
                 <Button variant="secondary" onClick={downloadManifest}>
                   <Download className="size-4" aria-hidden="true" />
@@ -1003,15 +1013,15 @@ export function VirtualTourWorkspace() {
           <div className="rounded-md border border-silver-200 bg-white p-4 shadow-panel sm:p-5">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-champagne-500">3D Room Node</p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-normal text-navy-950">Live WebGL preview</h2>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-champagne-500">{t("tour.webgl.kicker")}</p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-normal text-navy-950">{t("tour.webgl.title")}</h2>
                 <p className="mt-1 text-sm leading-6 text-charcoal-800">
-                  Captured angles are mapped into a navigable 3D room ring for the demo. SuperSplat can replace this renderer when the Gaussian-splat file is generated.
+                  {t("tour.webgl.body")}
                 </p>
               </div>
               <div className="inline-flex items-center gap-2 rounded-md border border-silver-200 bg-silver-50 px-3 py-2 text-sm font-semibold text-navy-950">
                 <Box className="size-4" aria-hidden="true" />
-                {completeCount}/8 mapped
+                {t("tour.webgl.mapped", { count: completeCount })}
               </div>
             </div>
             <TourModelPreview panels={tourPanels} readyCount={completeCount} />
@@ -1020,23 +1030,23 @@ export function VirtualTourWorkspace() {
           <div className="rounded-md border border-silver-200 bg-white p-4 shadow-panel sm:p-5">
             <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-champagne-500">SuperSplat proof of concept</p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-normal text-navy-950">Gaussian splat viewer</h2>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-champagne-500">{t("tour.splat.kicker")}</p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-normal text-navy-950">{t("tour.splat.title")}</h2>
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-charcoal-800">
-                  Load a processed .sog, .ply, .compressed.ply, .meta.json, or .lod-meta.json file inside the Tempo Casa app. The sample proves the 3D viewer layer; the captured photos or video still need a reconstruction job to become a splat.
+                  {t("tour.splat.body")}
                 </p>
               </div>
               <Button asChild variant="secondary">
                 <a href={superSplatViewerUrl} target="_blank" rel="noreferrer">
                   <Maximize2 className="size-4" aria-hidden="true" />
-                  Full screen
+                  {t("tour.splat.fullscreen")}
                 </a>
               </Button>
             </div>
 
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-end">
               <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-charcoal-800">Splat file URL</span>
+                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-charcoal-800">{t("tour.splat.url")}</span>
                 <span className="mt-2 flex min-h-12 items-center gap-2 rounded-md border border-silver-200 bg-white px-3 focus-within:border-navy-950 focus-within:ring-4 focus-within:ring-champagne-300/30">
                   <Link2 className="size-4 shrink-0 text-charcoal-800" aria-hidden="true" />
                   <input
@@ -1050,11 +1060,11 @@ export function VirtualTourWorkspace() {
               </label>
               <Button variant="secondary" onClick={loadSampleSuperSplat}>
                 <Box className="size-4" aria-hidden="true" />
-                Load sample
+                {t("tour.splat.loadSample")}
               </Button>
               <Button onClick={loadSuperSplatViewer}>
                 <ExternalLink className="size-4" aria-hidden="true" />
-                Load viewer
+                {t("tour.splat.loadViewer")}
               </Button>
             </div>
 
@@ -1076,8 +1086,8 @@ export function VirtualTourWorkspace() {
                 <Route className="size-5" aria-hidden="true" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-navy-950">Room queue</p>
-                <p className="text-xs text-charcoal-800">{savedRooms.length} nodes saved</p>
+                <p className="text-sm font-semibold text-navy-950">{t("tour.queue.title")}</p>
+                <p className="text-xs text-charcoal-800">{t("tour.queue.nodesSaved", { count: savedRooms.length })}</p>
               </div>
             </div>
 
@@ -1101,8 +1111,8 @@ export function VirtualTourWorkspace() {
               ) : (
                 <div className="rounded-md border border-dashed border-silver-300 bg-silver-50 p-5 text-center">
                   <Map className="mx-auto size-7 text-navy-950" aria-hidden="true" />
-                  <p className="mt-3 text-sm font-semibold text-navy-950">No room nodes yet</p>
-                  <p className="mt-1 text-xs leading-5 text-charcoal-800">Complete 8 credits and save the room set.</p>
+                  <p className="mt-3 text-sm font-semibold text-navy-950">{t("tour.queue.noNodes")}</p>
+                  <p className="mt-1 text-xs leading-5 text-charcoal-800">{t("tour.queue.noNodesBody")}</p>
                 </div>
               )}
             </div>
@@ -1114,12 +1124,12 @@ export function VirtualTourWorkspace() {
                 <Plus className="size-5" aria-hidden="true" />
               </div>
               <div>
-                <p className="text-sm font-semibold">Next backend layer</p>
-                <p className="text-xs text-silver-100">SuperSplat-ready 3D package</p>
+                <p className="text-sm font-semibold">{t("tour.backend.title")}</p>
+                <p className="text-xs text-silver-100">{t("tour.backend.subtitle")}</p>
               </div>
             </div>
             <p className="mt-4 text-sm leading-6 text-silver-100">
-              The capture manifest is structured for later AI alignment, panorama stitching, and PlayCanvas/SuperSplat publishing.
+              {t("tour.backend.body")}
             </p>
           </div>
         </aside>

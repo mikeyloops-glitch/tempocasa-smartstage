@@ -10,39 +10,36 @@ import { LanguageSelector } from "@/components/i18n/language-selector";
 import { BeforeAfterSlider } from "@/components/staging/before-after-slider";
 import { Button } from "@/components/ui/button";
 import { isClerkConfigured } from "@/lib/auth";
+import { useLanguage } from "@/lib/i18n";
 
-const proofPoints = [
-  "Architecture-preserving edits",
-  "Luxury listing photography",
-  "MLS-safe staging controls",
-  "Cloudinary CDN workflow"
-];
+const proofPointKeys = ["landing.proof.architecture", "landing.proof.photography", "landing.proof.safe", "landing.proof.cdn"];
 
 const workflow = [
   {
     icon: UploadCloud,
-    title: "Upload",
-    text: "Bring in empty apartments, rentals, and listing images from desktop or mobile."
+    titleKey: "landing.workflow.upload.title",
+    textKey: "landing.workflow.upload.text"
   },
   {
     icon: Layers3,
-    title: "Control",
-    text: "Choose room type, interior language, staging level, and optional masks."
+    titleKey: "landing.workflow.control.title",
+    textKey: "landing.workflow.control.text"
   },
   {
     icon: Sparkles,
-    title: "Stage",
-    text: "Generate realistic furniture, lighting, decor, scale, and shadows."
+    titleKey: "landing.workflow.stage.title",
+    textKey: "landing.workflow.stage.text"
   },
   {
     icon: Download,
-    title: "Export",
-    text: "Save listing-ready renders for campaign review and download."
+    titleKey: "landing.workflow.export.title",
+    textKey: "landing.workflow.export.text"
   }
 ];
 
 export function LandingPage() {
   const clerkReady = isClerkConfigured();
+  const { t } = useLanguage();
 
   return (
     <main className="min-h-screen bg-silver-50 text-charcoal-950">
@@ -56,25 +53,25 @@ export function LandingPage() {
             <Button asChild variant="secondary" className="hidden border-white/20 bg-white/10 text-white hover:bg-white/20 md:inline-flex">
               <Link href="/virtual-tour">
                 <Route className="size-4" aria-hidden="true" />
-                Virtual Tour
+                {t("landing.nav.virtualTour")}
               </Link>
             </Button>
             {clerkReady ? (
               <>
                 <SignedOut>
                   <Button asChild variant="secondary" className="hidden bg-white/95 text-navy-950 sm:inline-flex">
-                    <Link href="/login">Login</Link>
+                    <Link href="/login">{t("landing.nav.login")}</Link>
                   </Button>
                   <Button asChild className="bg-white text-navy-950 hover:bg-silver-100">
                     <Link href="/login">
-                      Launch
+                      {t("landing.nav.launch")}
                       <ArrowRight className="size-4" aria-hidden="true" />
                     </Link>
                   </Button>
                 </SignedOut>
                 <SignedIn>
                   <Button asChild className="bg-white text-navy-950 hover:bg-silver-100">
-                    <Link href="/dashboard">Dashboard</Link>
+                    <Link href="/dashboard">{t("landing.nav.dashboard")}</Link>
                   </Button>
                   <UserButton afterSignOutUrl="/" />
                 </SignedIn>
@@ -82,7 +79,7 @@ export function LandingPage() {
             ) : (
               <Button asChild className="bg-white text-navy-950 hover:bg-silver-100">
                 <Link href="/dashboard">
-                  Demo
+                  {t("button.demo")}
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </Link>
               </Button>
@@ -109,33 +106,33 @@ export function LandingPage() {
             className="max-w-3xl"
           >
             <p className="mb-5 text-xs font-semibold uppercase tracking-[0.32em] text-champagne-300">
-              TEMPOCASA IMMOBILIARE
+              {t("landing.hero.kicker")}
             </p>
             <h1 className="max-w-3xl font-display text-5xl leading-[0.95] tracking-normal sm:text-6xl lg:text-7xl">
-              Transform Empty Properties Into Premium Listings
+              {t("landing.hero.title")}
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-silver-100 sm:text-xl">
-              AI-powered virtual staging designed for modern luxury real-estate professionals.
+              {t("landing.hero.subtitle")}
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Button asChild size="lg" className="bg-white text-navy-950 hover:bg-silver-100">
                 <Link href="/dashboard">
-                  Open AI SmartStage
+                  {t("landing.hero.smartstage")}
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </Link>
               </Button>
               <Button asChild size="lg" variant="secondary" className="border-white/20 bg-white/10 text-white hover:bg-white/20">
                 <Link href="/virtual-tour">
-                  Open AI Virtual Tour
+                  {t("landing.hero.tour")}
                   <Route className="size-4" aria-hidden="true" />
                 </Link>
               </Button>
             </div>
             <div className="mt-9 grid max-w-3xl gap-3 sm:grid-cols-2">
-              {proofPoints.map((point) => (
-                <div key={point} className="flex items-center gap-2 text-sm text-silver-100">
+              {proofPointKeys.map((pointKey) => (
+                <div key={pointKey} className="flex items-center gap-2 text-sm text-silver-100">
                   <CheckCircle2 className="size-4 text-champagne-300" aria-hidden="true" />
-                  <span>{point}</span>
+                  <span>{t(pointKey)}</span>
                 </div>
               ))}
             </div>
@@ -146,12 +143,12 @@ export function LandingPage() {
       <section id="showcase" className="bg-white py-16 sm:py-20">
         <div className="mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[0.88fr_1.12fr] lg:px-8">
           <div className="flex flex-col justify-center">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-champagne-500">Controlled Rendering</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-champagne-500">{t("landing.showcase.kicker")}</p>
             <h2 className="mt-4 max-w-xl font-display text-4xl leading-tight tracking-normal text-navy-950 sm:text-5xl">
-              Preserve the room. Elevate the listing.
+              {t("landing.showcase.title")}
             </h2>
             <p className="mt-5 max-w-xl text-base leading-7 text-charcoal-800">
-              SmartStage is tuned for credible property marketing: walls remain straight, windows stay put, floors retain perspective, and furniture lands with believable scale.
+              {t("landing.showcase.body")}
             </p>
           </div>
           <BeforeAfterSlider
@@ -166,15 +163,15 @@ export function LandingPage() {
       <section className="bg-silver-50 py-16 sm:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-champagne-500">Enterprise Workflow</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-champagne-500">{t("landing.workflow.kicker")}</p>
             <h2 className="mt-4 font-display text-4xl leading-tight tracking-normal text-navy-950 sm:text-5xl">
-              Built for agents, listings, and review-ready output.
+              {t("landing.workflow.title")}
             </h2>
           </div>
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {workflow.map((item) => (
               <motion.article
-                key={item.title}
+                key={item.titleKey}
                 initial={{ opacity: 0, y: 14 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-80px" }}
@@ -184,8 +181,8 @@ export function LandingPage() {
                 <div className="grid size-11 place-items-center rounded-md bg-navy-950 text-white">
                   <item.icon className="size-5" aria-hidden="true" />
                 </div>
-                <h3 className="mt-5 text-lg font-semibold text-navy-950">{item.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-charcoal-800">{item.text}</p>
+                <h3 className="mt-5 text-lg font-semibold text-navy-950">{t(item.titleKey)}</h3>
+                <p className="mt-2 text-sm leading-6 text-charcoal-800">{t(item.textKey)}</p>
               </motion.article>
             ))}
           </div>
