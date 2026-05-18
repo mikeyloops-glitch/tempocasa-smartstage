@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 import { TempoCasaLogo } from "@/components/brand/tempocasa-logo";
 import { DownloadsPanel } from "@/components/downloads/downloads-panel";
-import { LanguageSelector } from "@/components/i18n/language-selector";
 import { MediaLibraryPanel } from "@/components/media/media-library-panel";
 import { RecentProjects } from "@/components/projects/recent-projects";
 import { BeforeAfterSlider } from "@/components/staging/before-after-slider";
@@ -520,7 +519,6 @@ function DashboardContent({ userName, userControl }: { userName?: string; userCo
             <TempoCasaLogo className="text-navy-950 sm:hidden" markOnly />
           </Link>
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-            <LanguageSelector />
             <Button asChild variant="secondary" className="hidden sm:inline-flex">
               <Link href="/">
                 <Building2 className="size-4" aria-hidden="true" />

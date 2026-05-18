@@ -6,6 +6,7 @@ import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import { motion } from "framer-motion";
 import { ArrowRight, CheckCircle2, Download, Layers3, Route, Sparkles, UploadCloud } from "lucide-react";
 import { TempoCasaLogo } from "@/components/brand/tempocasa-logo";
+import { LanguageSelector } from "@/components/i18n/language-selector";
 import { BeforeAfterSlider } from "@/components/staging/before-after-slider";
 import { Button } from "@/components/ui/button";
 import { isClerkConfigured } from "@/lib/auth";
@@ -51,6 +52,7 @@ export function LandingPage() {
             <TempoCasaLogo />
           </Link>
           <nav className="flex items-center gap-2">
+            <LanguageSelector />
             <Button asChild variant="secondary" className="hidden border-white/20 bg-white/10 text-white hover:bg-white/20 md:inline-flex">
               <Link href="/virtual-tour">
                 <Route className="size-4" aria-hidden="true" />
