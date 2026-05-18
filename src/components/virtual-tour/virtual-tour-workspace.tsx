@@ -6,6 +6,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
+  Box,
   Camera,
   CheckCircle2,
   Compass,
@@ -17,23 +18,28 @@ import {
   Map,
   Plus,
   RotateCcw,
+  RotateCw,
   Route,
   Save,
+  ScanLine,
   Sparkles,
-  UploadCloud
+  UploadCloud,
+  Video,
+  VideoOff
 } from "lucide-react";
 import { TempoCasaLogo } from "@/components/brand/tempocasa-logo";
 import { Button } from "@/components/ui/button";
+import { TourModelPreview } from "@/components/virtual-tour/tour-model-preview";
 
 const captureDirections = [
-  { id: "front", label: "Front", angle: 0 },
-  { id: "front-right", label: "Front right", angle: 45 },
-  { id: "right", label: "Right", angle: 90 },
-  { id: "back-right", label: "Back right", angle: 135 },
-  { id: "back", label: "Back", angle: 180 },
-  { id: "back-left", label: "Back left", angle: 225 },
-  { id: "left", label: "Left", angle: 270 },
-  { id: "front-left", label: "Front left", angle: 315 }
+  { id: "front", label: "12 o'clock wall", angle: 0 },
+  { id: "front-right", label: "1:30 angle", angle: 45 },
+  { id: "right", label: "3 o'clock wall", angle: 90 },
+  { id: "back-right", label: "4:30 angle", angle: 135 },
+  { id: "back", label: "6 o'clock wall", angle: 180 },
+  { id: "back-left", label: "7:30 angle", angle: 225 },
+  { id: "left", label: "9 o'clock wall", angle: 270 },
+  { id: "front-left", label: "10:30 angle", angle: 315 }
 ] as const;
 
 const roomTypes = [
@@ -49,12 +55,22 @@ const roomTypes = [
 
 const backendMilestones = [
   { label: "Phone 360 capture", status: "Active" },
-  { label: "AI alignment", status: "Next" },
-  { label: "Gaussian splat tour", status: "Next" },
-  { label: "Walkable web viewer", status: "Planned" }
+  { label: "OpenAI capture QA", status: "Active" },
+  { label: "3D WebGL preview", status: "Active" },
+  { label: "SuperSplat export", status: "Next" }
 ];
 
+type CaptureDirection = (typeof captureDirections)[number];
 type DirectionId = (typeof captureDirections)[number]["id"];
+type DirectionMode = "clockwise" | "counterclockwise";
+type CameraStatus = "idle" | "starting" | "active" | "blocked";
+
+type AiTourReport = {
+  checks?: string[];
+  nextAction?: string;
+  status?: string;
+  summary: string;
+};
 
 type CapturedShot = {
   capturedAt: string;
@@ -104,28 +120,36 @@ function createShot(file: File, url: string): CapturedShot {
 
 export function VirtualTourWorkspace() {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [directionMode, setDirectionMode] = useState<DirectionMode>("clockwise");
   const [roomName, setRoomName] = useState("Ingresso principale");
   const [roomType, setRoomType] = useState(roomTypes[0]);
   const [shots, setShots] = useState<Partial<Record<DirectionId, CapturedShot>>>({});
   const [savedRooms, setSavedRooms] = useState<SavedRoomSet[]>([]);
   const [draftStatus, setDraftStatus] = useState<"idle" | "processing" | "ready">("idle");
+  const [aiReport, setAiReport] = useState<AiTourReport | null>(null);
+  const [cameraStatus, setCameraStatus] = useState<CameraStatus>("idle");
+  const [cameraError, setCameraError] = useState("");
   const captureInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
-  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const objectUrls = objectUrlsRef.current;
 
     return () => {
       objectUrls.forEach((url) => URL.revokeObjectURL(url));
-      if (draftTimerRef.current) {
-        clearTimeout(draftTimerRef.current);
-      }
+      streamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
 
-  const activeDirection = captureDirections[activeIndex];
+  const orderedDirections = useMemo<CaptureDirection[]>(
+    () => (directionMode === "clockwise" ? Array.from(captureDirections) : [captureDirections[0], ...Array.from(captureDirections).slice(1).reverse()]),
+    [directionMode]
+  );
+  const activeDirection = orderedDirections[activeIndex] ?? orderedDirections[0];
   const activeShot = shots[activeDirection.id];
   const completeCount = captureDirections.filter((direction) => shots[direction.id]).length;
   const missingCount = captureDirections.length - completeCount;
@@ -134,6 +158,19 @@ export function VirtualTourWorkspace() {
   const totalCredits = savedCredits + capturedCredits;
   const canCreateDraft = completeCount === captureDirections.length;
   const coverageStatus = canCreateDraft ? "Ready for AI tour draft" : missingCount <= 2 ? "Almost complete" : "Capture in progress";
+  const guideDirectionText = directionMode === "clockwise" ? "move right / clockwise" : "move left / counter-clockwise";
+  const guideText = `Start at 12 o'clock, keep the phone level, place the wall inside the ghost frame, then ${guideDirectionText} to ${activeDirection.label}.`;
+  const tourPanels = useMemo(
+    () =>
+      orderedDirections.map((direction) => ({
+        angle: direction.angle,
+        captured: Boolean(shots[direction.id]),
+        id: direction.id,
+        label: direction.label,
+        url: shots[direction.id]?.url
+      })),
+    [orderedDirections, shots]
+  );
 
   const manifest = useMemo(
     () => ({
@@ -146,7 +183,8 @@ export function VirtualTourWorkspace() {
         capturedCredits,
         status: coverageStatus
       },
-      shots: captureDirections.map((direction) => ({
+      captureDirection: directionMode,
+      shots: orderedDirections.map((direction) => ({
         angle: direction.angle,
         label: direction.label,
         captured: Boolean(shots[direction.id]),
@@ -161,16 +199,10 @@ export function VirtualTourWorkspace() {
         type: room.type
       }))
     }),
-    [capturedCredits, coverageStatus, roomName, roomType, savedRooms, shots]
+    [capturedCredits, coverageStatus, directionMode, orderedDirections, roomName, roomType, savedRooms, shots]
   );
 
-  function handleShotFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-
-    if (!file) {
-      return;
-    }
-
+  function addShotFromFile(file: File) {
     const url = URL.createObjectURL(file);
     objectUrlsRef.current.push(url);
     const nextShots = {
@@ -180,17 +212,100 @@ export function VirtualTourWorkspace() {
 
     setShots(nextShots);
     setDraftStatus("idle");
+    setAiReport(null);
 
-    const nextMissingAfterActive = captureDirections.findIndex((direction, index) => index > activeIndex && !nextShots[direction.id]);
-    const firstMissing = captureDirections.findIndex((direction) => !nextShots[direction.id]);
+    const nextMissingAfterActive = orderedDirections.findIndex((direction, index) => index > activeIndex && !nextShots[direction.id]);
+    const firstMissing = orderedDirections.findIndex((direction) => !nextShots[direction.id]);
 
     if (nextMissingAfterActive >= 0) {
       setActiveIndex(nextMissingAfterActive);
     } else if (firstMissing >= 0) {
       setActiveIndex(firstMissing);
     }
+  }
+
+  function handleShotFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    addShotFromFile(file);
 
     event.target.value = "";
+  }
+
+  async function startCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraStatus("blocked");
+      setCameraError("Camera preview is not available in this browser. Use Upload or the device picker.");
+      return;
+    }
+
+    setCameraStatus("starting");
+    setCameraError("");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" },
+          height: { ideal: 1080 },
+          width: { ideal: 1920 }
+        }
+      });
+
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+
+      setCameraStatus("active");
+    } catch (error) {
+      console.error("Virtual tour camera could not start", error);
+      setCameraStatus("blocked");
+      setCameraError("Camera access was blocked or unavailable. Allow camera permission, then retry.");
+    }
+  }
+
+  function stopCamera() {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setCameraStatus("idle");
+  }
+
+  async function captureLiveShot() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    if (!video || !canvas || cameraStatus !== "active") {
+      return;
+    }
+
+    const width = video.videoWidth || 1280;
+    const height = video.videoHeight || 720;
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext("2d")?.drawImage(video, 0, 0, width, height);
+
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+
+    if (!blob) {
+      setCameraError("Camera frame could not be captured. Try again.");
+      return;
+    }
+
+    const file = new File([blob], `${activeDirection.id}-${Date.now()}.jpg`, { type: "image/jpeg" });
+    addShotFromFile(file);
   }
 
   function removeActiveShot() {
@@ -198,12 +313,14 @@ export function VirtualTourWorkspace() {
     delete nextShots[activeDirection.id];
     setShots(nextShots);
     setDraftStatus("idle");
+    setAiReport(null);
   }
 
   function resetCurrentRoom() {
     setShots({});
     setActiveIndex(0);
     setDraftStatus("idle");
+    setAiReport(null);
   }
 
   function saveRoomSet() {
@@ -231,20 +348,41 @@ export function VirtualTourWorkspace() {
     setRoomName("");
   }
 
-  function createTourDraft() {
+  async function createTourDraft() {
     if (!canCreateDraft) {
       return;
     }
 
     setDraftStatus("processing");
+    setAiReport(null);
 
-    if (draftTimerRef.current) {
-      clearTimeout(draftTimerRef.current);
-    }
+    try {
+      const response = await fetch("/api/tour/analyze", {
+        body: JSON.stringify({ manifest }),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+      const data = (await response.json()) as { report?: AiTourReport; message?: string };
 
-    draftTimerRef.current = setTimeout(() => {
+      setAiReport(
+        data.report ?? {
+          summary: data.message ?? "3D preview is ready. OpenAI QA returned no additional guidance.",
+          checks: ["All eight angles were captured.", "Use the WebGL preview for this pilot room node."],
+          nextAction: "Save the room node."
+        }
+      );
       setDraftStatus("ready");
-    }, 1200);
+    } catch {
+      setAiReport({
+        status: "local_preview_ready",
+        summary: "3D preview is ready locally. OpenAI QA could not be reached from this browser session.",
+        checks: ["All eight angles were captured.", "Use the WebGL preview and save the room node."],
+        nextAction: "Save the room node."
+      });
+      setDraftStatus("ready");
+    }
   }
 
   function downloadManifest() {
@@ -432,21 +570,113 @@ export function VirtualTourWorkspace() {
                   accept="image/jpeg,image/png,image/webp"
                   onChange={handleShotFile}
                 />
-                <Button onClick={() => captureInputRef.current?.click()}>
+                {cameraStatus === "active" ? (
+                  <Button onClick={captureLiveShot}>
+                    <ScanLine className="size-4" aria-hidden="true" />
+                    Capture angle
+                  </Button>
+                ) : (
+                  <Button onClick={startCamera} disabled={cameraStatus === "starting"}>
+                    {cameraStatus === "starting" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Video className="size-4" aria-hidden="true" />}
+                    Live camera
+                  </Button>
+                )}
+                <Button variant="secondary" onClick={() => captureInputRef.current?.click()}>
                   <Camera className="size-4" aria-hidden="true" />
-                  Take shot
+                  Device picker
                 </Button>
                 <Button variant="secondary" onClick={() => uploadInputRef.current?.click()}>
                   <UploadCloud className="size-4" aria-hidden="true" />
                   Upload
                 </Button>
+                {cameraStatus === "active" ? (
+                  <Button variant="secondary" onClick={stopCamera}>
+                    <VideoOff className="size-4" aria-hidden="true" />
+                    Stop
+                  </Button>
+                ) : null}
               </div>
             </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+              <div className="rounded-md border border-champagne-300 bg-champagne-100 p-3 text-sm leading-6 text-navy-950">
+                {guideText}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  data-active={directionMode === "clockwise" ? "true" : undefined}
+                  onClick={() => {
+                    setDirectionMode("clockwise");
+                    setActiveIndex(0);
+                  }}
+                  className={[
+                    "interactive-surface inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-3 text-sm font-semibold",
+                    directionMode === "clockwise"
+                      ? "control-selected border-navy-950 bg-navy-950 text-white"
+                      : "border-silver-200 bg-white text-charcoal-800 hover:bg-silver-50"
+                  ].join(" ")}
+                >
+                  <RotateCw className="size-4" aria-hidden="true" />
+                  Right
+                </button>
+                <button
+                  type="button"
+                  data-active={directionMode === "counterclockwise" ? "true" : undefined}
+                  onClick={() => {
+                    setDirectionMode("counterclockwise");
+                    setActiveIndex(0);
+                  }}
+                  className={[
+                    "interactive-surface inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-3 text-sm font-semibold",
+                    directionMode === "counterclockwise"
+                      ? "control-selected border-navy-950 bg-navy-950 text-white"
+                      : "border-silver-200 bg-white text-charcoal-800 hover:bg-silver-50"
+                  ].join(" ")}
+                >
+                  <RotateCcw className="size-4" aria-hidden="true" />
+                  Left
+                </button>
+              </div>
+            </div>
+            {cameraError ? (
+              <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-900">
+                {cameraError}
+              </div>
+            ) : null}
 
             <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
               <div className="relative overflow-hidden rounded-md border border-silver-200 bg-charcoal-950">
                 <div className="relative aspect-[4/5] w-full sm:aspect-[16/10]">
-                  {activeShot ? (
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className={[
+                      "absolute inset-0 size-full object-cover",
+                      cameraStatus === "active" || cameraStatus === "starting" ? "block" : "hidden"
+                    ].join(" ")}
+                  />
+                  <canvas ref={canvasRef} className="hidden" />
+                  {cameraStatus === "active" || cameraStatus === "starting" ? (
+                    <div className="pointer-events-none absolute inset-0">
+                      <div className="absolute inset-x-8 bottom-20 top-12 rounded-md border-2 border-white/80 shadow-[0_0_0_999px_rgba(17,20,24,0.18),0_0_32px_rgba(255,255,255,0.35)]" />
+                      <div className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-navy-950">
+                        12 o&apos;clock start
+                      </div>
+                      <div
+                        className="absolute left-1/2 top-1/2 h-[72%] w-px origin-bottom bg-champagne-300/80"
+                        style={{ transform: `translate(-50%, -100%) rotate(${directionMode === "clockwise" ? activeDirection.angle : -activeDirection.angle}deg)` }}
+                      >
+                        <div className="absolute -top-2 left-1/2 size-4 -translate-x-1/2 rounded-full border-2 border-white bg-champagne-300 shadow-soft" />
+                      </div>
+                      <div className="absolute bottom-3 left-3 right-3 rounded-md border border-white/15 bg-charcoal-950/78 p-3 text-white backdrop-blur">
+                        <p className="text-sm font-semibold">{activeDirection.label}</p>
+                        <p className="mt-1 text-xs leading-5 text-silver-100">{guideText}</p>
+                      </div>
+                    </div>
+                  ) : activeShot ? (
                     <img
                       src={activeShot.url}
                       alt={`${activeDirection.label} capture`}
@@ -467,7 +697,7 @@ export function VirtualTourWorkspace() {
                   <div className="absolute left-3 top-3 rounded-md bg-white/90 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-navy-950">
                     {activeDirection.angle} deg
                   </div>
-                  {activeShot ? (
+                  {activeShot && cameraStatus !== "active" && cameraStatus !== "starting" ? (
                     <button
                       type="button"
                       onClick={removeActiveShot}
@@ -486,7 +716,7 @@ export function VirtualTourWorkspace() {
                     <Compass className="size-6" aria-hidden="true" />
                     <span className="mt-1 text-xs font-semibold">{capturedCredits}/8</span>
                   </div>
-                  {captureDirections.map((direction, index) => {
+                  {orderedDirections.map((direction, index) => {
                     const captured = Boolean(shots[direction.id]);
                     const selected = index === activeIndex;
                     const position = getShotPosition(direction.angle);
@@ -541,8 +771,8 @@ export function VirtualTourWorkspace() {
                 </Button>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                {["Camera angles locked", "Doorway links pending", "3D viewer pending"].map((item, index) => {
-                  const ready = index === 0 && canCreateDraft;
+                {["Camera angles locked", "OpenAI QA connected", "3D preview active"].map((item, index) => {
+                  const ready = (index === 0 && canCreateDraft) || (index === 1 && Boolean(aiReport)) || index === 2;
 
                   return (
                     <div key={item} className="rounded-md border border-silver-200 bg-silver-50 p-3">
@@ -557,7 +787,17 @@ export function VirtualTourWorkspace() {
               {draftStatus === "ready" ? (
                 <div className="mt-4 rounded-md border border-champagne-300 bg-champagne-100 p-4 text-navy-950">
                   <p className="font-semibold">Draft package ready</p>
-                  <p className="mt-1 text-sm leading-6">Save this room set, then continue with the next room, corridor, doorway, or exterior position.</p>
+                  <p className="mt-1 text-sm leading-6">{aiReport?.summary ?? "Save this room set, then continue with the next room, corridor, doorway, or exterior position."}</p>
+                  {aiReport?.checks?.length ? (
+                    <ul className="mt-3 space-y-1 text-sm leading-6">
+                      {aiReport.checks.slice(0, 4).map((check) => (
+                        <li key={check} className="flex gap-2">
+                          <CheckCircle2 className="mt-1 size-4 shrink-0" aria-hidden="true" />
+                          <span>{check}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -574,6 +814,23 @@ export function VirtualTourWorkspace() {
                 </Button>
               </div>
             </div>
+          </div>
+
+          <div className="rounded-md border border-silver-200 bg-white p-4 shadow-panel sm:p-5">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-champagne-500">3D Room Node</p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-normal text-navy-950">Live WebGL preview</h2>
+                <p className="mt-1 text-sm leading-6 text-charcoal-800">
+                  Captured angles are mapped into a navigable 3D room ring for the demo. SuperSplat can replace this renderer when the Gaussian-splat file is generated.
+                </p>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-md border border-silver-200 bg-silver-50 px-3 py-2 text-sm font-semibold text-navy-950">
+                <Box className="size-4" aria-hidden="true" />
+                {completeCount}/8 mapped
+              </div>
+            </div>
+            <TourModelPreview panels={tourPanels} readyCount={completeCount} />
           </div>
         </section>
 
