@@ -1,0 +1,19 @@
+{
+  "name": "TEMPOCASA SMARTSTAGE",
+  "short_name": "TC SmartStage",
+  "description": "AI virtual staging for luxury real-estate listings.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f8fa",
+  "theme_color": "#004b33",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/assets/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
