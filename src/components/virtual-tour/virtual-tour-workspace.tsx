@@ -11,11 +11,15 @@ import {
   CheckCircle2,
   Compass,
   Download,
+  ExternalLink,
   Eye,
+  FileVideo,
   Home,
   ImagePlus,
+  Link2,
   Loader2,
   Map,
+  Maximize2,
   Plus,
   RotateCcw,
   RotateCw,
@@ -55,14 +59,17 @@ const roomTypes = [
 
 const backendMilestones = [
   { label: "Phone 360 capture", status: "Active" },
+  { label: "Walkthrough video source", status: "Active" },
   { label: "OpenAI capture QA", status: "Active" },
   { label: "3D WebGL preview", status: "Active" },
-  { label: "SuperSplat export", status: "Next" }
+  { label: "SuperSplat viewer", status: "Active" },
+  { label: "Splat reconstruction", status: "Next" }
 ];
 
 type CaptureDirection = (typeof captureDirections)[number];
 type DirectionId = (typeof captureDirections)[number]["id"];
 type DirectionMode = "clockwise" | "counterclockwise";
+type CaptureSourceMode = "guided-photos" | "walkthrough-video";
 type CameraStatus = "idle" | "starting" | "active" | "blocked";
 
 type AiTourReport = {
@@ -79,6 +86,13 @@ type CapturedShot = {
   url: string;
 };
 
+type WalkthroughVideo = {
+  capturedAt: string;
+  fileName: string;
+  size: number;
+  url: string;
+};
+
 type SavedRoomSet = {
   capturedAt: string;
   coverUrl?: string;
@@ -87,6 +101,13 @@ type SavedRoomSet = {
   name: string;
   type: string;
 };
+
+const sampleSplatUrl = "https://developer.playcanvas.com/assets/toy-cat.sog";
+
+function buildSuperSplatViewerUrl(contentUrl: string) {
+  const trimmed = contentUrl.trim() || sampleSplatUrl;
+  return `/supersplat-viewer?content=${encodeURIComponent(trimmed)}&aa&nofx`;
+}
 
 function getShotPosition(angle: number) {
   const radians = (angle * Math.PI) / 180;
@@ -121,16 +142,21 @@ function createShot(file: File, url: string): CapturedShot {
 export function VirtualTourWorkspace() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [directionMode, setDirectionMode] = useState<DirectionMode>("clockwise");
+  const [captureSourceMode, setCaptureSourceMode] = useState<CaptureSourceMode>("guided-photos");
   const [roomName, setRoomName] = useState("Ingresso principale");
   const [roomType, setRoomType] = useState(roomTypes[0]);
   const [shots, setShots] = useState<Partial<Record<DirectionId, CapturedShot>>>({});
+  const [walkthroughVideo, setWalkthroughVideo] = useState<WalkthroughVideo | null>(null);
   const [savedRooms, setSavedRooms] = useState<SavedRoomSet[]>([]);
   const [draftStatus, setDraftStatus] = useState<"idle" | "processing" | "ready">("idle");
   const [aiReport, setAiReport] = useState<AiTourReport | null>(null);
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>("idle");
   const [cameraError, setCameraError] = useState("");
+  const [splatUrl, setSplatUrl] = useState(sampleSplatUrl);
+  const [superSplatViewerUrl, setSuperSplatViewerUrl] = useState(buildSuperSplatViewerUrl(sampleSplatUrl));
   const captureInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -155,9 +181,18 @@ export function VirtualTourWorkspace() {
   const missingCount = captureDirections.length - completeCount;
   const capturedCredits = completeCount;
   const savedCredits = savedRooms.reduce((total, room) => total + room.credits, 0);
-  const totalCredits = savedCredits + capturedCredits;
-  const canCreateDraft = completeCount === captureDirections.length;
-  const coverageStatus = canCreateDraft ? "Ready for AI tour draft" : missingCount <= 2 ? "Almost complete" : "Capture in progress";
+  const videoCredits = walkthroughVideo ? 1 : 0;
+  const totalCredits = savedCredits + capturedCredits + videoCredits;
+  const hasCompleteGuidedSet = completeCount === captureDirections.length;
+  const hasWalkthroughSource = Boolean(walkthroughVideo);
+  const canCreateDraft = hasCompleteGuidedSet || hasWalkthroughSource;
+  const coverageStatus = hasCompleteGuidedSet
+    ? "Ready for AI tour draft"
+    : hasWalkthroughSource
+      ? "Walkthrough video ready"
+      : missingCount <= 2
+        ? "Almost complete"
+        : "Capture in progress";
   const guideDirectionText = directionMode === "clockwise" ? "move right / clockwise" : "move left / counter-clockwise";
   const guideText = `Start at 12 o'clock, keep the phone level, place the wall inside the ghost frame, then ${guideDirectionText} to ${activeDirection.label}.`;
   const tourPanels = useMemo(
@@ -183,7 +218,19 @@ export function VirtualTourWorkspace() {
         capturedCredits,
         status: coverageStatus
       },
+      sourceMode: captureSourceMode,
       captureDirection: directionMode,
+      walkthroughVideo: walkthroughVideo
+        ? {
+            capturedAt: walkthroughVideo.capturedAt,
+            fileName: walkthroughVideo.fileName,
+            size: walkthroughVideo.size
+          }
+        : null,
+      superSplat: {
+        contentUrl: splatUrl.trim() || sampleSplatUrl,
+        viewerUrl: superSplatViewerUrl
+      },
       shots: orderedDirections.map((direction) => ({
         angle: direction.angle,
         label: direction.label,
@@ -199,7 +246,7 @@ export function VirtualTourWorkspace() {
         type: room.type
       }))
     }),
-    [capturedCredits, coverageStatus, directionMode, orderedDirections, roomName, roomType, savedRooms, shots]
+    [capturedCredits, captureSourceMode, coverageStatus, directionMode, orderedDirections, roomName, roomType, savedRooms, shots, splatUrl, superSplatViewerUrl, walkthroughVideo]
   );
 
   function addShotFromFile(file: File) {
@@ -234,6 +281,47 @@ export function VirtualTourWorkspace() {
     addShotFromFile(file);
 
     event.target.value = "";
+  }
+
+  function handleWalkthroughVideoFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    objectUrlsRef.current.push(url);
+
+    setWalkthroughVideo({
+      capturedAt: new Date().toLocaleString("it-IT", {
+        dateStyle: "short",
+        timeStyle: "short"
+      }),
+      fileName: file.name || "walkthrough-video.mp4",
+      size: file.size,
+      url
+    });
+    setCaptureSourceMode("walkthrough-video");
+    setDraftStatus("idle");
+    setAiReport(null);
+
+    event.target.value = "";
+  }
+
+  function clearWalkthroughVideo() {
+    setWalkthroughVideo(null);
+    setDraftStatus("idle");
+    setAiReport(null);
+  }
+
+  function loadSuperSplatViewer() {
+    setSuperSplatViewerUrl(buildSuperSplatViewerUrl(splatUrl));
+  }
+
+  function loadSampleSuperSplat() {
+    setSplatUrl(sampleSplatUrl);
+    setSuperSplatViewerUrl(buildSuperSplatViewerUrl(sampleSplatUrl));
   }
 
   async function startCamera() {
@@ -318,6 +406,7 @@ export function VirtualTourWorkspace() {
 
   function resetCurrentRoom() {
     setShots({});
+    setWalkthroughVideo(null);
     setActiveIndex(0);
     setDraftStatus("idle");
     setAiReport(null);
@@ -337,10 +426,10 @@ export function VirtualTourWorkspace() {
           timeStyle: "short"
         }),
         coverUrl: firstShot?.url,
-        credits: captureDirections.length,
+        credits: hasCompleteGuidedSet ? captureDirections.length : 1,
         id: crypto.randomUUID(),
         name: roomName.trim() || `${roomType} ${current.length + 1}`,
-        type: roomType
+        type: hasCompleteGuidedSet ? roomType : `${roomType} video source`
       },
       ...current
     ]);
@@ -435,7 +524,7 @@ export function VirtualTourWorkspace() {
               Guided 360 capture for property walkthroughs.
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-silver-100 sm:text-lg sm:leading-7">
-              Capture each room as an 8-shot set, save the room node, and prepare the media package for AI alignment and a future walkable tour viewer.
+              Capture each room as a controlled 8-shot set or record one steady walkthrough video, then prepare the media package for AI alignment and a future walkable tour viewer.
             </p>
             <div className="mt-5 grid grid-cols-3 gap-2 sm:mt-7 sm:gap-3">
               <div className="rounded-md border border-white/15 bg-white/10 p-3 sm:p-4">
@@ -483,6 +572,35 @@ export function VirtualTourWorkspace() {
                 <p className="text-xs text-charcoal-800">{coverageStatus}</p>
               </div>
             </div>
+
+            <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-charcoal-800">Capture option</p>
+            <div className="mt-3 grid grid-cols-1 gap-2">
+              {[
+                { id: "guided-photos" as const, label: "Guided photos", detail: "8 locked angles for each room." },
+                { id: "walkthrough-video" as const, label: "Walkthrough video", detail: "One steady scan for reconstruction." }
+              ].map((option) => {
+                const selected = captureSourceMode === option.id;
+
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    data-active={selected ? "true" : undefined}
+                    onClick={() => setCaptureSourceMode(option.id)}
+                    className={[
+                      "interactive-surface min-h-16 rounded-md border px-3 py-3 text-left",
+                      selected
+                        ? "control-selected border-navy-950 bg-navy-950 text-white"
+                        : "border-silver-200 bg-white text-charcoal-800 hover:border-silver-300 hover:bg-silver-50 hover:text-navy-950"
+                    ].join(" ")}
+                  >
+                    <span className="block text-sm font-semibold">{option.label}</span>
+                    <span className={["mt-1 block text-xs leading-5", selected ? "text-silver-100" : "text-charcoal-800"].join(" ")}>{option.detail}</span>
+                  </button>
+                );
+              })}
+            </div>
+
             <label className="mt-5 block text-xs font-semibold uppercase tracking-[0.18em] text-charcoal-800" htmlFor="room-name">
               Room name
             </label>
@@ -534,7 +652,7 @@ export function VirtualTourWorkspace() {
               <div className="h-full rounded-full bg-navy-950 transition-all" style={{ width: `${(capturedCredits / 8) * 100}%` }} />
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2">
-              <Button variant="secondary" onClick={resetCurrentRoom} disabled={completeCount === 0}>
+              <Button variant="secondary" onClick={resetCurrentRoom} disabled={completeCount === 0 && !walkthroughVideo}>
                 <RotateCcw className="size-4" aria-hidden="true" />
                 Reset
               </Button>
@@ -746,7 +864,7 @@ export function VirtualTourWorkspace() {
                 <div className="mt-4 rounded-md border border-silver-200 bg-white p-3">
                   <p className="text-sm font-semibold text-navy-950">{coverageStatus}</p>
                   <p className="mt-1 text-xs leading-5 text-charcoal-800">
-                    {missingCount === 0 ? "Room set complete." : `${missingCount} credits still open.`}
+                    {hasCompleteGuidedSet ? "Room set complete." : hasWalkthroughSource ? "Video source ready for reconstruction testing." : `${missingCount} credits still open.`}
                   </p>
                   {activeShot ? (
                     <p className="mt-3 text-xs text-charcoal-800">
@@ -758,12 +876,78 @@ export function VirtualTourWorkspace() {
             </div>
           </div>
 
+          <div className="rounded-md border border-silver-200 bg-white p-4 shadow-panel sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-champagne-500">Option B</p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-normal text-navy-950">Walkthrough video capture</h2>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-charcoal-800">
+                  Use this when it is quicker to walk the property once. Move slowly, keep the phone level, cover each wall, doorway, ceiling edge, and floor reference.
+                </p>
+              </div>
+              <Button onClick={() => videoInputRef.current?.click()}>
+                <FileVideo className="size-4" aria-hidden="true" />
+                Record / choose video
+              </Button>
+              <input
+                ref={videoInputRef}
+                className="sr-only"
+                type="file"
+                accept="video/mp4,video/quicktime,video/webm,video/*"
+                capture="environment"
+                onChange={handleWalkthroughVideoFile}
+              />
+            </div>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="overflow-hidden rounded-md border border-silver-200 bg-charcoal-950">
+                <div className="relative aspect-video">
+                  {walkthroughVideo ? (
+                    <video src={walkthroughVideo.url} controls playsInline className="absolute inset-0 size-full bg-black object-contain" />
+                  ) : (
+                    <div className="absolute inset-0 grid place-items-center p-6 text-center text-white">
+                      <div>
+                        <div className="mx-auto grid size-14 place-items-center rounded-md bg-white/10">
+                          <Video className="size-7" aria-hidden="true" />
+                        </div>
+                        <p className="mt-4 text-base font-semibold">No walkthrough video selected</p>
+                        <p className="mt-2 text-sm leading-6 text-silver-100">On iPhone or Android this opens the device camera or video picker.</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-md border border-silver-200 bg-silver-50 p-4">
+                <p className="text-sm font-semibold text-navy-950">Video source package</p>
+                <p className="mt-2 text-sm leading-6 text-charcoal-800">
+                  The demo stores the source locally and includes its metadata in the exported manifest. A production backend can send this file to a Gaussian-splat reconstruction worker.
+                </p>
+                {walkthroughVideo ? (
+                  <div className="mt-4 rounded-md border border-silver-200 bg-white p-3 text-sm text-charcoal-800">
+                    <p className="font-semibold text-navy-950">{walkthroughVideo.fileName}</p>
+                    <p className="mt-1">{formatBytes(walkthroughVideo.size)}</p>
+                    <p className="mt-1">{walkthroughVideo.capturedAt}</p>
+                    <Button variant="secondary" className="mt-3 w-full" onClick={clearWalkthroughVideo}>
+                      <RotateCcw className="size-4" aria-hidden="true" />
+                      Clear video
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-md border border-dashed border-silver-300 bg-white p-3 text-sm leading-6 text-charcoal-800">
+                    Best practice: one continuous slow scan per room, plus extra passes through doorways and corridors for alignment.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
             <div className="rounded-md border border-silver-200 bg-white p-4 shadow-panel sm:p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-navy-950">AI tour draft</p>
-                  <p className="mt-1 text-sm leading-6 text-charcoal-800">Create the first room package after all 8 credits are captured.</p>
+                  <p className="mt-1 text-sm leading-6 text-charcoal-800">Create the first room package after all 8 guided credits are captured or a walkthrough video is selected.</p>
                 </div>
                 <Button onClick={createTourDraft} disabled={!canCreateDraft || draftStatus === "processing"}>
                   {draftStatus === "processing" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Sparkles className="size-4" aria-hidden="true" />}
@@ -771,7 +955,7 @@ export function VirtualTourWorkspace() {
                 </Button>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                {["Camera angles locked", "OpenAI QA connected", "3D preview active"].map((item, index) => {
+                {["Capture source ready", "OpenAI QA connected", "3D preview active"].map((item, index) => {
                   const ready = (index === 0 && canCreateDraft) || (index === 1 && Boolean(aiReport)) || index === 2;
 
                   return (
@@ -831,6 +1015,57 @@ export function VirtualTourWorkspace() {
               </div>
             </div>
             <TourModelPreview panels={tourPanels} readyCount={completeCount} />
+          </div>
+
+          <div className="rounded-md border border-silver-200 bg-white p-4 shadow-panel sm:p-5">
+            <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-champagne-500">SuperSplat proof of concept</p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-normal text-navy-950">Gaussian splat viewer</h2>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-charcoal-800">
+                  Load a processed .sog, .ply, .compressed.ply, .meta.json, or .lod-meta.json file inside the Tempo Casa app. The sample proves the 3D viewer layer; the captured photos or video still need a reconstruction job to become a splat.
+                </p>
+              </div>
+              <Button asChild variant="secondary">
+                <a href={superSplatViewerUrl} target="_blank" rel="noreferrer">
+                  <Maximize2 className="size-4" aria-hidden="true" />
+                  Full screen
+                </a>
+              </Button>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-end">
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-charcoal-800">Splat file URL</span>
+                <span className="mt-2 flex min-h-12 items-center gap-2 rounded-md border border-silver-200 bg-white px-3 focus-within:border-navy-950 focus-within:ring-4 focus-within:ring-champagne-300/30">
+                  <Link2 className="size-4 shrink-0 text-charcoal-800" aria-hidden="true" />
+                  <input
+                    value={splatUrl}
+                    onChange={(event) => setSplatUrl(event.target.value)}
+                    placeholder="https://.../room.sog"
+                    className="min-w-0 flex-1 bg-transparent text-base text-charcoal-950 outline-none"
+                    type="text"
+                  />
+                </span>
+              </label>
+              <Button variant="secondary" onClick={loadSampleSuperSplat}>
+                <Box className="size-4" aria-hidden="true" />
+                Load sample
+              </Button>
+              <Button onClick={loadSuperSplatViewer}>
+                <ExternalLink className="size-4" aria-hidden="true" />
+                Load viewer
+              </Button>
+            </div>
+
+            <div className="mt-4 overflow-hidden rounded-md border border-silver-200 bg-charcoal-950">
+              <iframe
+                title="Tempo Casa SuperSplat viewer"
+                src={superSplatViewerUrl}
+                className="h-[460px] w-full bg-black sm:h-[560px]"
+                allow="fullscreen; xr-spatial-tracking"
+              />
+            </div>
           </div>
         </section>
 

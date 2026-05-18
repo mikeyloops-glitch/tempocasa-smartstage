@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^6.12.0",
+    "@playcanvas/supersplat-viewer": "^1.23.1",
     "cloudinary": "^2.5.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.4.7",

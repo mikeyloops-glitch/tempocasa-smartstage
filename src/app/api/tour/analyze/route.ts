@@ -9,22 +9,27 @@ function isOpenAIConfigured() {
   return Boolean(key && key.startsWith("sk-") && !key.includes("replace_me"));
 }
 
-function fallbackReport(capturedCredits: number) {
+function fallbackReport(capturedCredits: number, hasWalkthroughVideo = false) {
   const missing = Math.max(0, 8 - capturedCredits);
+  const isReady = capturedCredits >= 8 || hasWalkthroughVideo;
+  const summary =
+    capturedCredits >= 8
+      ? "Room package has all 8 guided captures and is ready for a 3D draft preview."
+      : hasWalkthroughVideo
+        ? "Walkthrough video source is ready for a reconstruction proof of concept and SuperSplat handoff."
+        : `Capture ${missing} more guided angle${missing === 1 ? "" : "s"} before creating the 3D draft.`;
 
   return {
-    status: capturedCredits >= 8 ? "ready" : "needs_more_captures",
-    summary:
-      capturedCredits >= 8
-        ? "Room package has all 8 guided captures and is ready for a 3D draft preview."
-        : `Capture ${missing} more guided angle${missing === 1 ? "" : "s"} before creating the 3D draft.`,
+    status: isReady ? "ready" : "needs_more_captures",
+    summary,
     checks: [
       "Start at 12 o'clock / 0 degrees.",
       "Keep the phone level and rotate from one angle marker to the next.",
       "Hold each wall steady inside the ghost frame before capture.",
+      "For video, walk slowly with steady overlap between walls, doorways, floors, and ceiling edges.",
       "Avoid people, mirrors, heavy motion blur, and overexposed windows."
     ],
-    nextAction: capturedCredits >= 8 ? "Open the 3D preview and save the room node." : "Continue guided capture."
+    nextAction: isReady ? "Open the 3D preview and save the room node." : "Continue guided capture."
   };
 }
 
@@ -41,6 +46,16 @@ export async function POST(request: Request) {
         captured?: boolean;
         label?: string;
       }>;
+      sourceMode?: string;
+      superSplat?: {
+        contentUrl?: string;
+        viewerUrl?: string;
+      };
+      walkthroughVideo?: {
+        capturedAt?: string;
+        fileName?: string;
+        size?: number;
+      } | null;
       workflow?: string;
     };
   };
@@ -54,11 +69,12 @@ export async function POST(request: Request) {
   const manifest = payload.manifest;
   const capturedCredits =
     manifest?.shots?.filter((shot) => shot.captured).length ?? manifest?.room?.capturedCredits ?? 0;
+  const hasWalkthroughVideo = Boolean(manifest?.walkthroughVideo?.fileName);
 
   if (!isOpenAIConfigured()) {
     return NextResponse.json(
       {
-        report: fallbackReport(capturedCredits),
+        report: fallbackReport(capturedCredits, hasWalkthroughVideo),
         message: "OpenAI is not configured yet. The local capture QA fallback was used."
       },
       { status: 202 }
@@ -77,13 +93,16 @@ export async function POST(request: Request) {
         {
           role: "system",
           content:
-            "You are a real-estate 3D capture QA assistant for Tempo Casa. Return compact JSON only with keys: status, summary, checks, nextAction. Focus on guided 360 capture quality, complete angle coverage, room geometry, camera stability, and readiness for a Gaussian splat or WebGL tour preview."
+            "You are a real-estate 3D capture QA assistant for Tempo Casa. Return compact JSON only with keys: status, summary, checks, nextAction. Focus on guided 360 capture quality, walkthrough-video capture quality, complete room coverage, room geometry, camera stability, and readiness for a Gaussian splat or WebGL tour preview."
         },
         {
           role: "user",
           content: JSON.stringify({
             workflow: manifest?.workflow ?? "AI Virtual Tour",
             room: manifest?.room,
+            sourceMode: manifest?.sourceMode,
+            walkthroughVideo: manifest?.walkthroughVideo,
+            superSplat: manifest?.superSplat,
             shots: manifest?.shots
           })
         }
@@ -91,14 +110,14 @@ export async function POST(request: Request) {
     });
 
     const text = completion.choices[0]?.message?.content;
-    const report = text ? JSON.parse(text) : fallbackReport(capturedCredits);
+    const report = text ? JSON.parse(text) : fallbackReport(capturedCredits, hasWalkthroughVideo);
 
     return NextResponse.json({ report });
   } catch (error) {
     console.error("OpenAI tour capture QA failed", error);
     return NextResponse.json(
       {
-        report: fallbackReport(capturedCredits),
+        report: fallbackReport(capturedCredits, hasWalkthroughVideo),
         message: "OpenAI tour QA did not complete. The local capture QA fallback was used."
       },
       { status: 202 }
