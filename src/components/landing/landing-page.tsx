@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import { motion } from "framer-motion";
-import { ArrowRight, CheckCircle2, Download, Layers3, Sparkles, UploadCloud } from "lucide-react";
+import { ArrowRight, CheckCircle2, Download, Layers3, Route, Sparkles, UploadCloud } from "lucide-react";
 import { TempoCasaLogo } from "@/components/brand/tempocasa-logo";
 import { BeforeAfterSlider } from "@/components/staging/before-after-slider";
 import { Button } from "@/components/ui/button";
@@ -51,6 +51,12 @@ export function LandingPage() {
             <TempoCasaLogo />
           </Link>
           <nav className="flex items-center gap-2">
+            <Button asChild variant="secondary" className="hidden border-white/20 bg-white/10 text-white hover:bg-white/20 md:inline-flex">
+              <Link href="/virtual-tour">
+                <Route className="size-4" aria-hidden="true" />
+                Virtual Tour
+              </Link>
+            </Button>
             {clerkReady ? (
               <>
                 <SignedOut>
@@ -117,7 +123,10 @@ export function LandingPage() {
                 </Link>
               </Button>
               <Button asChild size="lg" variant="secondary" className="border-white/20 bg-white/10 text-white hover:bg-white/20">
-                <Link href="#showcase">View Results</Link>
+                <Link href="/virtual-tour">
+                  Open AI Virtual Tour
+                  <Route className="size-4" aria-hidden="true" />
+                </Link>
               </Button>
             </div>
             <div className="mt-9 grid max-w-3xl gap-3 sm:grid-cols-2">
