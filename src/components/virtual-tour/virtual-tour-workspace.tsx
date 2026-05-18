@@ -104,10 +104,16 @@ type SavedRoomSet = {
   type: string;
 };
 
+const houseDemoSceneUrl = "https://superspl.at/scene/e721ea7c";
 const sampleSplatUrl = "https://developer.playcanvas.com/assets/toy-cat.sog";
 
 function buildSuperSplatViewerUrl(contentUrl: string) {
-  const trimmed = contentUrl.trim() || sampleSplatUrl;
+  const trimmed = contentUrl.trim() || houseDemoSceneUrl;
+
+  if (trimmed.startsWith("https://superspl.at/scene/")) {
+    return trimmed;
+  }
+
   return `/supersplat-viewer?content=${encodeURIComponent(trimmed)}&aa&nofx`;
 }
 
@@ -155,8 +161,8 @@ export function VirtualTourWorkspace() {
   const [aiReport, setAiReport] = useState<AiTourReport | null>(null);
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>("idle");
   const [cameraError, setCameraError] = useState("");
-  const [splatUrl, setSplatUrl] = useState(sampleSplatUrl);
-  const [superSplatViewerUrl, setSuperSplatViewerUrl] = useState(buildSuperSplatViewerUrl(sampleSplatUrl));
+  const [splatUrl, setSplatUrl] = useState(houseDemoSceneUrl);
+  const [superSplatViewerUrl, setSuperSplatViewerUrl] = useState(buildSuperSplatViewerUrl(houseDemoSceneUrl));
   const captureInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -235,7 +241,7 @@ export function VirtualTourWorkspace() {
           }
         : null,
       superSplat: {
-        contentUrl: splatUrl.trim() || sampleSplatUrl,
+        contentUrl: splatUrl.trim() || houseDemoSceneUrl,
         viewerUrl: superSplatViewerUrl
       },
       shots: orderedDirections.map((direction) => ({
@@ -329,6 +335,11 @@ export function VirtualTourWorkspace() {
   function loadSampleSuperSplat() {
     setSplatUrl(sampleSplatUrl);
     setSuperSplatViewerUrl(buildSuperSplatViewerUrl(sampleSplatUrl));
+  }
+
+  function loadHouseSuperSplat() {
+    setSplatUrl(houseDemoSceneUrl);
+    setSuperSplatViewerUrl(buildSuperSplatViewerUrl(houseDemoSceneUrl));
   }
 
   async function startCamera() {
@@ -725,8 +736,33 @@ export function VirtualTourWorkspace() {
             </div>
 
             <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
-              <div className="rounded-md border border-champagne-300 bg-champagne-100 p-3 text-sm leading-6 text-navy-950">
-                {guideText}
+              <div className="grid gap-3 rounded-md border border-champagne-300 bg-champagne-100 p-3 text-sm leading-6 text-navy-950 md:grid-cols-[minmax(0,1fr)_15rem]">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-champagne-600">{t("tour.guided.currentTarget")}</p>
+                  <p className="mt-1 font-semibold text-navy-950">{activeDirectionLabel}</p>
+                  <p className="mt-1">{guideText}</p>
+                  <p className="mt-2 text-xs font-medium leading-5 text-charcoal-800">{t("tour.guided.liveOverlayNote")}</p>
+                </div>
+                <div className="rounded-md border border-white/70 bg-white/70 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-charcoal-800">
+                    {t("tour.guide.stepStatus", { step: activeStep, total: totalSteps })}
+                  </p>
+                  <div className="mt-2 flex items-center gap-3">
+                    <div className="relative size-14 shrink-0 rounded-full border border-silver-200 bg-white">
+                      <div className="absolute left-1/2 top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-navy-950" />
+                      <div
+                        className="absolute left-1/2 top-1/2 h-[42%] w-0.5 origin-bottom rounded-full bg-champagne-500"
+                        style={{ transform: `translate(-50%, -100%) rotate(${activeDirection.angle}deg)` }}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="fit-label text-sm font-semibold leading-tight text-navy-950">{activeDirectionLabel}</p>
+                      <p className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-charcoal-800">
+                        {t("tour.guide.target")} {activeDirection.angle} deg
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
@@ -1067,7 +1103,7 @@ export function VirtualTourWorkspace() {
               </Button>
             </div>
 
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-end">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto_auto] lg:items-end">
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-[0.18em] text-charcoal-800">{t("tour.splat.url")}</span>
                 <span className="mt-2 flex min-h-12 items-center gap-2 rounded-md border border-silver-200 bg-white px-3 focus-within:border-navy-950 focus-within:ring-4 focus-within:ring-champagne-300/30">
@@ -1075,12 +1111,16 @@ export function VirtualTourWorkspace() {
                   <input
                     value={splatUrl}
                     onChange={(event) => setSplatUrl(event.target.value)}
-                    placeholder="https://.../room.sog"
+                    placeholder="https://.../room.sog or superspl.at/scene/..."
                     className="min-w-0 flex-1 bg-transparent text-base text-charcoal-950 outline-none"
                     type="text"
                   />
                 </span>
               </label>
+              <Button variant="secondary" onClick={loadHouseSuperSplat}>
+                <Home className="size-4" aria-hidden="true" />
+                {t("tour.splat.loadHouse")}
+              </Button>
               <Button variant="secondary" onClick={loadSampleSuperSplat}>
                 <Box className="size-4" aria-hidden="true" />
                 {t("tour.splat.loadSample")}
