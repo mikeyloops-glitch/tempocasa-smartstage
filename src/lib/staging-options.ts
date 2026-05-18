@@ -2,6 +2,7 @@ import type { RoomType, StagingLevel, StagingStyle } from "@/lib/types";
 
 export const roomTypes: RoomType[] = [
   "Living Room",
+  "Lounge",
   "Living Room + Kitchen",
   "Bedroom",
   "Kitchen",
@@ -31,6 +32,7 @@ export const stagingLevels: StagingLevel[] = ["Light", "Medium", "Luxury"];
 
 export const roomDescriptors: Record<RoomType, string> = {
   "Living Room": "premium living area with a sofa layout, rug, media wall, layered lighting, and refined decor",
+  Lounge: "dedicated lounge or soggiorno staging with proportionate sofa seating, coffee table, rug, media or conversation focus, soft lighting, and calm luxury decor",
   "Living Room + Kitchen": "open-plan living and kitchen area with a coherent lounge zone, media wall or conversation seating, dining or island relationship, clean kitchen finishes, integrated lighting, and clear circulation between cooking and relaxing areas",
   Bedroom: "serene primary bedroom with luxury bedding, bedside lighting, understated art, and hotel-grade styling",
   Kitchen: "neat luxury kitchen refresh with minimalist cabinetry, clean counters, integrated appliances where appropriate, warm practical lighting, and restrained listing styling",
