@@ -33,6 +33,55 @@ function fallbackReport(capturedCredits: number, hasWalkthroughVideo = false) {
   };
 }
 
+function formatCheckLabel(value: string) {
+  return value
+    .replace(/([A-Z])/g, " $1")
+    .replace(/[_-]+/g, " ")
+    .replace(/^./, (letter) => letter.toUpperCase())
+    .trim();
+}
+
+function normalizeChecks(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item)).filter(Boolean);
+  }
+
+  if (value && typeof value === "object") {
+    return Object.entries(value)
+      .map(([key, item]) => `${formatCheckLabel(key)}: ${String(item)}`)
+      .filter(Boolean);
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    return [value.trim()];
+  }
+
+  return [];
+}
+
+function normalizeReport(value: unknown, capturedCredits: number, hasWalkthroughVideo: boolean) {
+  const fallback = fallbackReport(capturedCredits, hasWalkthroughVideo);
+
+  if (!value || typeof value !== "object") {
+    return fallback;
+  }
+
+  const report = value as {
+    checks?: unknown;
+    nextAction?: unknown;
+    status?: unknown;
+    summary?: unknown;
+  };
+  const checks = normalizeChecks(report.checks);
+
+  return {
+    status: typeof report.status === "string" ? report.status : fallback.status,
+    summary: typeof report.summary === "string" ? report.summary : fallback.summary,
+    checks: checks.length > 0 ? checks : fallback.checks,
+    nextAction: typeof report.nextAction === "string" ? report.nextAction : fallback.nextAction
+  };
+}
+
 export async function POST(request: Request) {
   let payload: {
     manifest?: {
@@ -93,7 +142,7 @@ export async function POST(request: Request) {
         {
           role: "system",
           content:
-            "You are a real-estate 3D capture QA assistant for Tempo Casa. Return compact JSON only with keys: status, summary, checks, nextAction. Focus on guided 360 capture quality, walkthrough-video capture quality, complete room coverage, room geometry, camera stability, and readiness for a Gaussian splat or WebGL tour preview."
+            "You are a real-estate 3D capture QA assistant for Tempo Casa. Return compact JSON only with keys: status, summary, checks, nextAction. checks must be an array of short strings. Focus on guided 360 capture quality, walkthrough-video capture quality, complete room coverage, room geometry, camera stability, and readiness for a Gaussian splat or WebGL tour preview."
         },
         {
           role: "user",
@@ -110,7 +159,8 @@ export async function POST(request: Request) {
     });
 
     const text = completion.choices[0]?.message?.content;
-    const report = text ? JSON.parse(text) : fallbackReport(capturedCredits, hasWalkthroughVideo);
+    const parsedReport = text ? JSON.parse(text) : fallbackReport(capturedCredits, hasWalkthroughVideo);
+    const report = normalizeReport(parsedReport, capturedCredits, hasWalkthroughVideo);
 
     return NextResponse.json({ report });
   } catch (error) {

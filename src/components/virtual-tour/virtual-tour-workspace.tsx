@@ -180,8 +180,10 @@ export function VirtualTourWorkspace() {
   );
   const activeDirection = orderedDirections[activeIndex] ?? orderedDirections[0];
   const activeShot = shots[activeDirection.id];
+  const activeStep = activeIndex + 1;
   const completeCount = captureDirections.filter((direction) => shots[direction.id]).length;
   const missingCount = captureDirections.length - completeCount;
+  const totalSteps = captureDirections.length;
   const capturedCredits = completeCount;
   const savedCredits = savedRooms.reduce((total, room) => total + room.credits, 0);
   const videoCredits = walkthroughVideo ? 1 : 0;
@@ -789,9 +791,28 @@ export function VirtualTourWorkspace() {
                       <div className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-navy-950">
                         {t("tour.guide.start")}
                       </div>
+                      <div className="absolute right-3 top-3 w-[8.75rem] rounded-md border border-white/15 bg-charcoal-950/78 p-3 text-white shadow-soft backdrop-blur sm:w-40">
+                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-champagne-300">
+                          {t("tour.guide.stepStatus", { step: activeStep, total: totalSteps })}
+                        </p>
+                        <p className="mt-1 text-sm font-semibold">{activeDirectionLabel}</p>
+                        <p className="mt-1 text-[0.7rem] uppercase tracking-[0.14em] text-silver-100">
+                          {t("tour.guide.target")} {activeDirection.angle} deg
+                        </p>
+                        <div className="relative mt-3 aspect-square rounded-full border border-white/20 bg-white/10">
+                          <div className="absolute left-1/2 top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white" />
+                          <div
+                            className="absolute left-1/2 top-1/2 h-[42%] w-0.5 origin-bottom rounded-full bg-champagne-300"
+                            style={{ transform: `translate(-50%, -100%) rotate(${activeDirection.angle}deg)` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/35 bg-charcoal-950/62 px-3 py-1.5 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-white backdrop-blur">
+                        {t("tour.guide.alignWall")}
+                      </div>
                       <div
                         className="absolute left-1/2 top-1/2 h-[72%] w-px origin-bottom bg-champagne-300/80"
-                        style={{ transform: `translate(-50%, -100%) rotate(${directionMode === "clockwise" ? activeDirection.angle : -activeDirection.angle}deg)` }}
+                        style={{ transform: `translate(-50%, -100%) rotate(${activeDirection.angle}deg)` }}
                       >
                         <div className="absolute -top-2 left-1/2 size-4 -translate-x-1/2 rounded-full border-2 border-white bg-champagne-300 shadow-soft" />
                       </div>
@@ -818,9 +839,11 @@ export function VirtualTourWorkspace() {
                       </div>
                     </div>
                   )}
-                  <div className="absolute left-3 top-3 rounded-md bg-white/90 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-navy-950">
-                    {activeDirection.angle} deg
-                  </div>
+                  {cameraStatus !== "active" && cameraStatus !== "starting" ? (
+                    <div className="absolute left-3 top-3 rounded-md bg-white/90 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-navy-950">
+                      {activeDirection.angle} deg
+                    </div>
+                  ) : null}
                   {activeShot && cameraStatus !== "active" && cameraStatus !== "starting" ? (
                     <button
                       type="button"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useLanguage } from "@/lib/i18n";
 
 type TourPanel = {
   angle: number;
@@ -16,6 +17,7 @@ type TourModelPreviewProps = {
 };
 
 export function TourModelPreview({ panels, readyCount }: TourModelPreviewProps) {
+  const { t } = useLanguage();
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -140,12 +142,12 @@ export function TourModelPreview({ panels, readyCount }: TourModelPreviewProps) 
     <div className="relative overflow-hidden rounded-md border border-silver-200 bg-charcoal-950 shadow-panel">
       <div ref={containerRef} className="h-[320px] w-full sm:h-[380px]" />
       <div className="absolute left-3 top-3 rounded-md bg-white/90 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-navy-950">
-        3D preview
+        {t("tour.webgl.previewLabel")}
       </div>
       <div className="absolute bottom-3 left-3 right-3 rounded-md border border-white/15 bg-charcoal-950/78 p-3 text-white backdrop-blur">
-        <p className="text-sm font-semibold">{readyCount}/8 capture panels mapped</p>
+        <p className="text-sm font-semibold">{t("tour.webgl.panelsMapped", { count: readyCount })}</p>
         <p className="mt-1 text-xs leading-5 text-silver-100">
-          This is the live WebGL room-node preview. The production layer can load a SuperSplat or PlayCanvas Gaussian-splat scene from the same capture package.
+          {t("tour.webgl.previewHelp")}
         </p>
       </div>
     </div>
