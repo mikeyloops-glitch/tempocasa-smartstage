@@ -98,7 +98,7 @@ export function LandingPage() {
           sizes="100vw"
           className="object-cover"
         />
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(7,17,31,0.88),rgba(7,17,31,0.55)_42%,rgba(7,17,31,0.18))]" />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(0,75,51,0.90),rgba(0,111,70,0.58)_42%,rgba(0,144,86,0.20))]" />
         <div className="relative z-10 mx-auto flex min-h-[88svh] max-w-7xl items-center px-4 pb-20 pt-28 sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: 18 }}
