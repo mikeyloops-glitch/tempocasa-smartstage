@@ -511,7 +511,7 @@ function DashboardContent({ userName, userControl }: { userName?: string; userCo
   }
 
   return (
-    <main className="min-h-screen bg-silver-50 pb-28 text-charcoal-950 sm:pb-32 lg:pb-0">
+    <main className="min-h-screen bg-silver-50 pb-8 text-charcoal-950 sm:pb-10 lg:pb-0">
       <header className="sticky top-0 z-40 border-b border-silver-200 bg-white/90 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-[1480px] items-center justify-between gap-2 px-3 sm:h-16 sm:px-6 lg:px-8">
           <Link href="/" aria-label="TEMPOCASA SMARTSTAGE home" className="min-w-0">
@@ -530,8 +530,8 @@ function DashboardContent({ userName, userControl }: { userName?: string; userCo
         </div>
       </header>
 
-      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-silver-200 bg-white/95 px-2 pb-[max(0.55rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-14px_38px_rgba(17,20,24,0.10)] backdrop-blur-xl lg:hidden">
-        <div className="mx-auto grid max-w-3xl grid-cols-6 gap-1 px-1 pb-1">
+      <nav className="sticky top-14 z-30 border-b border-silver-200 bg-white/95 px-2 py-2 shadow-soft backdrop-blur-xl sm:top-16 lg:hidden">
+        <div className="mx-auto grid max-w-3xl grid-cols-6 gap-1 px-1">
           {navigation.map((item) => {
             const selected = activeHash === item.href;
             const label = t(item.labelKey);
@@ -544,7 +544,7 @@ function DashboardContent({ userName, userControl }: { userName?: string; userCo
                 aria-label={label}
                 data-active={selected ? "true" : undefined}
                 className={[
-                  "interactive-surface inline-flex min-h-14 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md border px-0.5 py-2 text-center text-[0.68rem] font-semibold leading-tight sm:min-h-12 sm:gap-1 sm:px-1.5 sm:text-xs",
+                  "interactive-surface inline-flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md border px-0.5 py-1.5 text-center text-[0.68rem] font-semibold leading-tight sm:gap-1 sm:px-1.5 sm:text-xs",
                   selected
                     ? "control-selected border-navy-950 bg-navy-950 text-white"
                     : "border-silver-200 bg-white text-charcoal-800 hover:border-silver-300 hover:bg-silver-50 hover:text-navy-950"

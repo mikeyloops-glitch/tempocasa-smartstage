@@ -208,6 +208,28 @@ export function VirtualTourWorkspace() {
   const guideText = t(directionMode === "clockwise" ? "tour.guide.clockwise" : "tour.guide.counterclockwise", {
     label: activeDirectionLabel
   });
+  const nextDirection =
+    orderedDirections.find((direction, index) => index > activeIndex && !shots[direction.id]) ??
+    orderedDirections.find((direction) => !shots[direction.id] && direction.id !== activeDirection.id);
+  const nextDirectionLabel = nextDirection ? t(nextDirection.labelKey) : t("tour.guided.completeTarget");
+  const activeGuidanceStep = cameraStatus === "active" ? 2 : cameraStatus === "starting" ? 1 : 0;
+  const guidedWorkflowSteps = [
+    {
+      bodyKey: "tour.guided.stepFrameBody",
+      icon: ScanLine,
+      titleKey: "tour.guided.stepFrame"
+    },
+    {
+      bodyKey: "tour.guided.stepAlignBody",
+      icon: Compass,
+      titleKey: "tour.guided.stepAlign"
+    },
+    {
+      bodyKey: "tour.guided.stepCaptureBody",
+      icon: Camera,
+      titleKey: "tour.guided.stepCapture"
+    }
+  ];
   const tourPanels = useMemo(
     () =>
       orderedDirections.map((direction) => ({
@@ -735,6 +757,50 @@ export function VirtualTourWorkspace() {
               </div>
             </div>
 
+            <div className="mt-4 rounded-md border border-silver-200 bg-silver-50 p-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-charcoal-800">{t("tour.guided.workflowTitle")}</p>
+                  <p className="mt-1 text-sm leading-6 text-charcoal-800">{t("tour.guided.autoAdvance")}</p>
+                </div>
+                <span className="inline-flex w-fit items-center rounded-md bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-navy-950 shadow-sm">
+                  {t("tour.guide.stepStatus", { step: activeStep, total: totalSteps })}
+                </span>
+              </div>
+              <div className="mt-3 grid gap-2 md:grid-cols-3">
+                {guidedWorkflowSteps.map((step, index) => {
+                  const StepIcon = step.icon;
+                  const selected = index === activeGuidanceStep;
+
+                  return (
+                    <div
+                      key={step.titleKey}
+                      data-active={selected ? "true" : undefined}
+                      className={[
+                        "rounded-md border p-3 transition",
+                        selected
+                          ? "border-navy-950 bg-white shadow-panel"
+                          : "border-silver-200 bg-white/70"
+                      ].join(" ")}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={[
+                            "grid size-8 shrink-0 place-items-center rounded-md",
+                            selected ? "bg-navy-950 text-white" : "bg-silver-100 text-charcoal-800"
+                          ].join(" ")}
+                        >
+                          <StepIcon className="size-4" aria-hidden="true" />
+                        </span>
+                        <p className="text-sm font-semibold text-navy-950">{t(step.titleKey)}</p>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-charcoal-800">{t(step.bodyKey)}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
               <div className="grid gap-3 rounded-md border border-champagne-300 bg-champagne-100 p-3 text-sm leading-6 text-navy-950 md:grid-cols-[minmax(0,1fr)_15rem]">
                 <div>
@@ -823,11 +889,11 @@ export function VirtualTourWorkspace() {
                   <canvas ref={canvasRef} className="hidden" />
                   {cameraStatus === "active" || cameraStatus === "starting" ? (
                     <div className="pointer-events-none absolute inset-0">
-                      <div className="absolute inset-x-8 bottom-20 top-12 rounded-md border-2 border-white/80 shadow-[0_0_0_999px_rgba(17,20,24,0.18),0_0_32px_rgba(255,255,255,0.35)]" />
-                      <div className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-navy-950">
+                      <div className="absolute inset-x-6 bottom-40 top-16 rounded-md border-2 border-white/80 shadow-[0_0_0_999px_rgba(17,20,24,0.18),0_0_32px_rgba(255,255,255,0.35)] sm:inset-x-8 sm:bottom-32 sm:top-12" />
+                      <div className="absolute left-3 top-3 max-w-[calc(100%-11rem)] truncate rounded-full bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-navy-950 sm:max-w-none">
                         {t("tour.guide.start")}
                       </div>
-                      <div className="absolute right-3 top-3 w-[8.75rem] rounded-md border border-white/15 bg-charcoal-950/78 p-3 text-white shadow-soft backdrop-blur sm:w-40">
+                      <div className="absolute right-3 top-3 w-[8.5rem] rounded-md border border-white/15 bg-charcoal-950/78 p-2.5 text-white shadow-soft backdrop-blur sm:w-40 sm:p-3">
                         <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-champagne-300">
                           {t("tour.guide.stepStatus", { step: activeStep, total: totalSteps })}
                         </p>
@@ -852,9 +918,29 @@ export function VirtualTourWorkspace() {
                       >
                         <div className="absolute -top-2 left-1/2 size-4 -translate-x-1/2 rounded-full border-2 border-white bg-champagne-300 shadow-soft" />
                       </div>
-                      <div className="absolute bottom-3 left-3 right-3 rounded-md border border-white/15 bg-charcoal-950/78 p-3 text-white backdrop-blur">
-                        <p className="text-sm font-semibold">{activeDirectionLabel}</p>
-                        <p className="mt-1 text-xs leading-5 text-silver-100">{guideText}</p>
+                      <div className="pointer-events-auto absolute bottom-3 left-3 right-3 rounded-md border border-white/15 bg-charcoal-950/82 p-3 text-white shadow-soft backdrop-blur">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-champagne-300">{t("tour.guided.cameraHudTitle")}</p>
+                            <p className="mt-1 text-sm font-semibold">{activeDirectionLabel}</p>
+                            <p className="mt-1 text-xs leading-5 text-silver-100">
+                              {t("tour.guided.frameHint")} / {t("tour.guided.keepLevel")}
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-silver-100">
+                              {t("tour.guided.nextTarget", { label: nextDirectionLabel })}
+                            </p>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
+                            <Button size="sm" variant="secondary" className="border-white bg-white text-navy-950 hover:bg-silver-100" onClick={captureLiveShot}>
+                              <ScanLine className="size-4" aria-hidden="true" />
+                              {t("tour.button.captureAngle")}
+                            </Button>
+                            <Button size="sm" variant="ghost" className="border border-white/20 bg-white/10 text-white hover:bg-white/20" onClick={stopCamera}>
+                              <VideoOff className="size-4" aria-hidden="true" />
+                              {t("tour.button.stop")}
+                            </Button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   ) : activeShot ? (
@@ -912,7 +998,7 @@ export function VirtualTourWorkspace() {
                         data-active={selected ? "true" : undefined}
                         onClick={() => setActiveIndex(index)}
                         className={[
-                          "interactive-surface absolute grid size-14 -translate-x-1/2 -translate-y-1/2 place-items-center overflow-hidden rounded-md border text-xs font-semibold",
+                          "interactive-surface absolute grid size-12 -translate-x-1/2 -translate-y-1/2 place-items-center overflow-hidden rounded-md border text-xs font-semibold sm:size-14",
                           selected
                             ? "control-selected border-navy-950 bg-navy-950 text-white"
                             : captured

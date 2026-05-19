@@ -94,7 +94,7 @@ export function BeforeAfterSlider({
     return (
     <div
       className={cn(
-        "relative w-full overflow-hidden rounded-md border shadow-soft",
+        "relative min-w-0 max-w-full overflow-hidden rounded-md border shadow-soft",
         isLight ? "border-silver-200 bg-white" : "border-white/20 bg-charcoal-950",
         className
       )}
