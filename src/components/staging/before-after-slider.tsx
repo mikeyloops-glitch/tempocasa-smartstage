@@ -14,6 +14,7 @@ type BeforeAfterSliderProps = {
   afterAlt: string;
   className?: string;
   priority?: boolean;
+  tone?: "dark" | "light";
 };
 
 export function BeforeAfterSlider({
@@ -21,7 +22,8 @@ export function BeforeAfterSlider({
   afterSrc,
   beforeAlt,
   afterAlt,
-  className
+  className,
+  tone = "dark"
 }: BeforeAfterSliderProps) {
   const { t } = useLanguage();
   const [position, setPosition] = useState(0);
@@ -87,8 +89,16 @@ export function BeforeAfterSlider({
   }
 
   function renderSlider(showFullscreenButton = true) {
+    const isLight = tone === "light";
+
     return (
-    <div className={cn("relative w-full overflow-hidden rounded-md border border-white/20 bg-charcoal-950 shadow-soft", className)}>
+    <div
+      className={cn(
+        "relative w-full overflow-hidden rounded-md border shadow-soft",
+        isLight ? "border-silver-200 bg-white" : "border-white/20 bg-charcoal-950",
+        className
+      )}
+    >
       <div className="relative aspect-[4/5] w-full select-none sm:aspect-[16/10]">
         <img
           src={beforeSrc}
@@ -114,9 +124,16 @@ export function BeforeAfterSlider({
             <span className="h-5 w-px bg-silver-300" />
           </div>
         </div>
-        <div className="pointer-events-none absolute inset-x-2 bottom-2 z-20 flex items-center justify-between rounded-sm bg-charcoal-950/72 px-2 py-1.5 text-[0.6rem] font-semibold uppercase tracking-[0.1em] text-white sm:inset-x-4 sm:bottom-4 sm:px-3 sm:py-2 sm:text-[0.68rem] sm:tracking-[0.16em]">
-          <span className={position < 50 ? "text-champagne-300" : "text-white/70"}>{t("preview.before")}</span>
-          <span className={position >= 50 ? "text-champagne-300" : "text-white/70"}>{t("preview.after")}</span>
+        <div
+          className={cn(
+            "pointer-events-none absolute inset-x-2 bottom-2 z-20 flex items-center justify-between rounded-sm px-2 py-1.5 text-[0.6rem] font-semibold uppercase tracking-[0.1em] sm:inset-x-4 sm:bottom-4 sm:px-3 sm:py-2 sm:text-[0.68rem] sm:tracking-[0.16em]",
+            isLight
+              ? "border border-silver-200 bg-white/92 text-charcoal-800 shadow-panel backdrop-blur"
+              : "bg-charcoal-950/72 text-white"
+          )}
+        >
+          <span className={position < 50 ? "text-navy-900" : isLight ? "text-charcoal-800/70" : "text-white/70"}>{t("preview.before")}</span>
+          <span className={position >= 50 ? "text-navy-900" : isLight ? "text-charcoal-800/70" : "text-white/70"}>{t("preview.after")}</span>
         </div>
         <div
           aria-label={t("preview.title")}
@@ -124,7 +141,10 @@ export function BeforeAfterSlider({
           aria-valuemin={0}
           aria-valuenow={position}
           aria-valuetext={valueText}
-          className="absolute inset-0 z-20 cursor-ew-resize touch-none focus:outline-none focus-visible:ring-2 focus-visible:ring-champagne-300 focus-visible:ring-offset-2 focus-visible:ring-offset-charcoal-950"
+          className={cn(
+            "absolute inset-0 z-20 cursor-ew-resize touch-none focus:outline-none focus-visible:ring-2 focus-visible:ring-champagne-300 focus-visible:ring-offset-2",
+            isLight ? "focus-visible:ring-offset-white" : "focus-visible:ring-offset-charcoal-950"
+          )}
           role="slider"
           tabIndex={0}
           onKeyDown={handleKeyDown}

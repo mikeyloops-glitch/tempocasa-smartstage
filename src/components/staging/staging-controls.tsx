@@ -74,7 +74,7 @@ export function StagingControls({
                 aria-pressed={selected}
                 data-active={selected ? "true" : undefined}
                 className={cn(
-                  "interactive-surface flex min-h-14 min-w-0 items-center gap-3 rounded-md border px-3 py-3 text-left text-base font-medium leading-tight sm:min-h-12 sm:py-2 sm:text-[0.95rem]",
+                  "interactive-surface flex min-h-14 min-w-0 items-center gap-3 overflow-hidden rounded-md border px-3 py-3 text-left text-base font-medium leading-tight sm:min-h-12 sm:py-2 sm:text-[0.95rem]",
                   selected
                     ? "control-selected border-navy-950 bg-navy-950 text-white"
                     : "border-silver-200 bg-white text-charcoal-900 hover:border-silver-300 hover:bg-silver-50"
@@ -103,7 +103,7 @@ export function StagingControls({
                 aria-pressed={selected}
                 data-active={selected ? "true" : undefined}
                 className={cn(
-                  "interactive-surface flex min-h-14 min-w-0 items-center gap-3 rounded-md border px-3 py-3 text-left text-base font-medium leading-tight sm:min-h-12 sm:py-2 sm:text-[0.95rem]",
+                  "interactive-surface flex min-h-14 min-w-0 items-center gap-3 overflow-hidden rounded-md border px-3 py-3 text-left text-base font-medium leading-tight sm:min-h-12 sm:py-2 sm:text-[0.95rem]",
                   selected
                     ? "control-selected border-navy-950 bg-navy-950 text-white"
                     : "border-silver-200 bg-white text-charcoal-900 hover:border-silver-300 hover:bg-silver-50"

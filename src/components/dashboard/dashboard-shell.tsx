@@ -568,7 +568,7 @@ function DashboardContent({ userName, userControl }: { userName?: string; userCo
                 aria-current={activeHash === item.href ? "page" : undefined}
                 data-active={activeHash === item.href ? "true" : undefined}
                 className={[
-                  "interactive-surface flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium leading-tight",
+                  "interactive-surface flex min-h-11 items-center gap-3 overflow-hidden rounded-md px-3 py-2 text-sm font-medium leading-tight",
                   activeHash === item.href
                     ? "control-selected bg-navy-950 text-white"
                     : "text-charcoal-800 hover:bg-silver-50 hover:text-navy-950"

@@ -45,8 +45,9 @@ export function LandingPage() {
     <main className="min-h-screen bg-silver-50 text-charcoal-950">
       <header className="fixed inset-x-0 top-0 z-40 border-b border-white/10 bg-navy-950/75 text-white backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link aria-label="TEMPOCASA SMARTSTAGE home" href="/">
-            <TempoCasaLogo />
+          <Link aria-label="TEMPOCASA SMARTSTAGE home" href="/" className="min-w-0">
+            <TempoCasaLogo className="hidden sm:flex" />
+            <TempoCasaLogo className="sm:hidden" markOnly />
           </Link>
           <nav className="flex items-center gap-2">
             <LanguageSelector />
@@ -156,6 +157,7 @@ export function LandingPage() {
             afterSrc="/assets/smartstage-demo-after.png"
             beforeAlt="Empty Italian apartment before virtual staging"
             afterAlt="Luxury staged Italian apartment after AI virtual staging"
+            tone="light"
           />
         </div>
       </section>

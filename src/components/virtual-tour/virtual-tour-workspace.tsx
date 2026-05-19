@@ -1018,7 +1018,7 @@ export function VirtualTourWorkspace() {
                   <p className="text-sm font-semibold text-navy-950">{t("tour.draft.title")}</p>
                   <p className="mt-1 text-sm leading-6 text-charcoal-800">{t("tour.draft.body")}</p>
                 </div>
-                <Button onClick={createTourDraft} disabled={!canCreateDraft || draftStatus === "processing"}>
+                <Button className="w-full shrink-0 sm:w-auto" onClick={createTourDraft} disabled={!canCreateDraft || draftStatus === "processing"}>
                   {draftStatus === "processing" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Sparkles className="size-4" aria-hidden="true" />}
                   {draftStatus === "processing" ? t("tour.draft.preparing") : t("tour.draft.create")}
                 </Button>
