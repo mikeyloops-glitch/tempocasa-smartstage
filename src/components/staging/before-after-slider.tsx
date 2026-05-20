@@ -1,7 +1,8 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { createPortal } from "react-dom";
 import { Maximize2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/lib/i18n";
@@ -28,10 +29,38 @@ export function BeforeAfterSlider({
   const { t } = useLanguage();
   const [position, setPosition] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  const activePointerId = useRef<number | null>(null);
   const afterClip = `inset(0 ${100 - position}% 0 0)`;
   const handlePosition = `clamp(20px, ${position}%, calc(100% - 20px))`;
   const imageClass = "absolute inset-0 h-full w-full object-contain object-center";
   const valueText = position === 0 ? t("preview.before") : position === 100 ? t("preview.after") : `${position}% ${t("preview.after").toLowerCase()}`;
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isFullscreen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleEscape(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsFullscreen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [isFullscreen]);
 
   function setClampedPosition(value: number) {
     const rounded = Math.min(100, Math.max(0, Math.round(value)));
@@ -56,16 +85,31 @@ export function BeforeAfterSlider({
   }
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    activePointerId.current = event.pointerId;
     event.currentTarget.setPointerCapture(event.pointerId);
     updateFromPointer(event);
   }
 
   function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
-    if (event.buttons !== 1) {
+    if (activePointerId.current !== event.pointerId) {
       return;
     }
 
+    event.preventDefault();
     updateFromPointer(event);
+  }
+
+  function handlePointerEnd(event: PointerEvent<HTMLDivElement>) {
+    if (activePointerId.current !== event.pointerId) {
+      return;
+    }
+
+    activePointerId.current = null;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -88,31 +132,32 @@ export function BeforeAfterSlider({
     setClampedPosition(keyActions[event.key]);
   }
 
-  function renderSlider(showFullscreenButton = true) {
+  function renderSlider({ showFullscreenButton = true, fullscreen = false } = {}) {
     const isLight = tone === "light";
 
     return (
     <div
       className={cn(
-        "relative min-w-0 max-w-full overflow-hidden rounded-md border shadow-soft pointer-events-auto",
+        "relative min-w-0 max-w-full overflow-hidden rounded-md border shadow-soft",
+        fullscreen ? "h-full w-full border-white/15 shadow-none" : null,
         isLight ? "border-silver-200 bg-white" : "border-white/20 bg-charcoal-950",
         className
       )}
     >
-      <div className="relative aspect-[4/5] w-full select-none sm:aspect-[16/10]">
+      <div className={cn("relative w-full select-none", fullscreen ? "h-full min-h-[360px]" : "aspect-[4/5] sm:aspect-[16/10]")}>
         <img
           src={beforeSrc}
           alt={beforeAlt}
           className={cn(imageClass, "z-0")}
           draggable={false}
-          loading="lazy"
+          loading={fullscreen ? "eager" : "lazy"}
         />
         <img
           src={afterSrc}
           alt={afterAlt}
           className={cn(imageClass, "z-[1]")}
           draggable={false}
-          loading="lazy"
+          loading={fullscreen ? "eager" : "lazy"}
           style={{ clipPath: afterClip, WebkitClipPath: afterClip, willChange: "clip-path" }}
         />
         <div
@@ -150,6 +195,9 @@ export function BeforeAfterSlider({
           onKeyDown={handleKeyDown}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerEnd}
+          onPointerCancel={handlePointerEnd}
+          onLostPointerCapture={handlePointerEnd}
         />
         {showFullscreenButton ? (
           <Button
@@ -170,19 +218,59 @@ export function BeforeAfterSlider({
   return (
     <>
       {renderSlider()}
-      {isFullscreen ? (
-        <div className="pointer-events-none fixed inset-0 z-50 bg-charcoal-950/95 p-2 backdrop-blur-sm sm:p-4 md:p-8">
-          <Button
-            aria-label={t("fullscreen.close")}
-            className="pointer-events-auto absolute right-4 top-4 z-[70] bg-white text-navy-950 hover:bg-silver-100"
-            size="icon"
-            variant="secondary"
-            onClick={() => setIsFullscreen(false)}
-          >
-            <X className="size-4" aria-hidden="true" />
-          </Button>
-          <div className="pointer-events-none relative z-10 mx-auto flex h-full max-w-6xl items-center">{renderSlider(false)}</div>
-        </div>
+      {isFullscreen && isMounted ? createPortal(
+        <div className="fixed inset-0 z-[100] bg-charcoal-950/96 text-white backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={t("preview.title")}>
+          <div className="mx-auto flex h-[100svh] max-w-7xl flex-col gap-3 p-3 sm:gap-4 sm:p-5">
+            <div className="flex shrink-0 items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-champagne-300 sm:text-xs sm:tracking-[0.22em]">{t("preview.kicker")}</p>
+                <h2 className="mt-1 text-lg font-semibold text-white sm:text-2xl">{t("preview.title")}</h2>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button className="hidden bg-white/10 text-white hover:bg-white/20 sm:inline-flex" size="sm" variant="ghost" onClick={() => setClampedPosition(0)}>
+                  {t("preview.before")}
+                </Button>
+                <Button className="hidden bg-white/10 text-white hover:bg-white/20 sm:inline-flex" size="sm" variant="ghost" onClick={() => setClampedPosition(100)}>
+                  {t("preview.after")}
+                </Button>
+                <Button
+                  aria-label={t("fullscreen.close")}
+                  className="bg-white text-navy-950 hover:bg-silver-100"
+                  size="icon"
+                  variant="secondary"
+                  onClick={() => setIsFullscreen(false)}
+                >
+                  <X className="size-4" aria-hidden="true" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1">{renderSlider({ showFullscreenButton: false, fullscreen: true })}</div>
+
+            <div className="shrink-0 rounded-md border border-white/15 bg-white/10 p-3 shadow-soft">
+              <input
+                aria-label={t("preview.title")}
+                className="h-8 w-full accent-white"
+                max={100}
+                min={0}
+                onChange={(event) => setClampedPosition(Number(event.currentTarget.value))}
+                onInput={(event) => setClampedPosition(Number(event.currentTarget.value))}
+                type="range"
+                value={position}
+              />
+              <div className="mt-1 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.14em] text-silver-100">
+                <button className="rounded-sm px-2 py-1 text-left hover:bg-white/10" type="button" onClick={() => setClampedPosition(0)}>
+                  {t("preview.before")}
+                </button>
+                <span>{position}%</span>
+                <button className="rounded-sm px-2 py-1 text-right hover:bg-white/10" type="button" onClick={() => setClampedPosition(100)}>
+                  {t("preview.after")}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
       ) : null}
     </>
   );
