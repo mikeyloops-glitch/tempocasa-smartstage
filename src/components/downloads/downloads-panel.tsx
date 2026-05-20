@@ -2,6 +2,7 @@
 
 import { Download, FileDown, ImageDown, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { buildDownloadUrl } from "@/lib/download-url";
 import { useLanguage } from "@/lib/i18n";
 import type { ProjectRecord } from "@/lib/types";
 
@@ -30,13 +31,13 @@ export function DownloadsPanel({
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <Button asChild disabled={!isReady} variant={isReady ? "primary" : "secondary"} className={!isReady ? "pointer-events-none" : ""}>
-          <a href={project?.stagedUrl ?? "#"} download={`${project?.name ?? "smartstage-render"}.png`}>
+          <a href={buildDownloadUrl(project?.stagedUrl, `${project?.name ?? "smartstage-render"}.png`)} download={`${project?.name ?? "smartstage-render"}.png`}>
             <ImageDown className="size-4" aria-hidden="true" />
             <span className="fit-label">{t("downloads.hd")}</span>
           </a>
         </Button>
         <Button asChild disabled={!isReady} variant="secondary" className={!isReady ? "pointer-events-none" : ""}>
-          <a href={project?.stagedUrl ?? "#"} download={`${project?.name ?? "smartstage-listing"}.png`}>
+          <a href={buildDownloadUrl(project?.stagedUrl, `${project?.name ?? "smartstage-listing"}.png`)} download={`${project?.name ?? "smartstage-listing"}.png`}>
             <Download className="size-4" aria-hidden="true" />
             <span className="fit-label">{t("downloads.listing")}</span>
           </a>

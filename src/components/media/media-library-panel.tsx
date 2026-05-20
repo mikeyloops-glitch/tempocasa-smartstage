@@ -4,6 +4,7 @@
 import { useMemo, useState } from "react";
 import { Download, FolderOpen, ImageIcon, RotateCcw, Sparkles, Trash2, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { buildDownloadUrl } from "@/lib/download-url";
 import { useLanguage } from "@/lib/i18n";
 import type { GenerationMode, MediaAsset } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
@@ -136,7 +137,7 @@ export function MediaLibraryPanel({ assets, onRemove, onUseAsInput }: MediaLibra
                       <span className="fit-label">{t(action.key)}</span>
                     </Button>
                     <Button asChild size="icon" variant="ghost" aria-label={`Download ${asset.name}`}>
-                      <a href={asset.url} download={`${asset.name}.png`}>
+                      <a href={buildDownloadUrl(asset.url, `${asset.name}.png`)} download={`${asset.name}.png`}>
                         <Download className="size-4" aria-hidden="true" />
                       </a>
                     </Button>

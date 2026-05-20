@@ -94,7 +94,7 @@ export function BeforeAfterSlider({
     return (
     <div
       className={cn(
-        "relative min-w-0 max-w-full overflow-hidden rounded-md border shadow-soft",
+        "relative min-w-0 max-w-full overflow-hidden rounded-md border shadow-soft pointer-events-auto",
         isLight ? "border-silver-200 bg-white" : "border-white/20 bg-charcoal-950",
         className
       )}
@@ -171,17 +171,17 @@ export function BeforeAfterSlider({
     <>
       {renderSlider()}
       {isFullscreen ? (
-        <div className="fixed inset-0 z-50 bg-charcoal-950/95 p-2 backdrop-blur-sm sm:p-4 md:p-8">
+        <div className="pointer-events-none fixed inset-0 z-50 bg-charcoal-950/95 p-2 backdrop-blur-sm sm:p-4 md:p-8">
           <Button
             aria-label={t("fullscreen.close")}
-            className="absolute right-4 top-4 z-[70] bg-white text-navy-950 hover:bg-silver-100"
+            className="pointer-events-auto absolute right-4 top-4 z-[70] bg-white text-navy-950 hover:bg-silver-100"
             size="icon"
             variant="secondary"
             onClick={() => setIsFullscreen(false)}
           >
             <X className="size-4" aria-hidden="true" />
           </Button>
-          <div className="relative z-10 mx-auto flex h-full max-w-6xl items-center">{renderSlider(false)}</div>
+          <div className="pointer-events-none relative z-10 mx-auto flex h-full max-w-6xl items-center">{renderSlider(false)}</div>
         </div>
       ) : null}
     </>
