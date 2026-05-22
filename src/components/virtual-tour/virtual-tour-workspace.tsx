@@ -88,6 +88,12 @@ type CapturedShot = {
   url: string;
 };
 
+type SavedRoomShot = CapturedShot & {
+  angle: number;
+  directionId: DirectionId;
+  label: string;
+};
+
 type WalkthroughVideo = {
   capturedAt: string;
   fileName: string;
@@ -101,7 +107,10 @@ type SavedRoomSet = {
   credits: number;
   id: string;
   name: string;
+  shots: SavedRoomShot[];
+  sourceMode: CaptureSourceMode;
   type: string;
+  walkthroughVideo?: WalkthroughVideo;
 };
 
 const houseDemoSceneUrl = "https://superspl.at/scene/e721ea7c";
@@ -212,6 +221,7 @@ export function VirtualTourWorkspace() {
     orderedDirections.find((direction, index) => index > activeIndex && !shots[direction.id]) ??
     orderedDirections.find((direction) => !shots[direction.id] && direction.id !== activeDirection.id);
   const nextDirectionLabel = nextDirection ? t(nextDirection.labelKey) : t("tour.guided.completeTarget");
+  const cameraIsLive = cameraStatus === "active" || cameraStatus === "starting";
   const activeGuidanceStep = cameraStatus === "active" ? 2 : cameraStatus === "starting" ? 1 : 0;
   const guidedWorkflowSteps = [
     {
@@ -241,6 +251,19 @@ export function VirtualTourWorkspace() {
       })),
     [orderedDirections, shots, t]
   );
+
+  useEffect(() => {
+    if (!cameraIsLive) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [cameraIsLive]);
 
   const manifest = useMemo(
     () => ({
@@ -277,8 +300,26 @@ export function VirtualTourWorkspace() {
         capturedAt: room.capturedAt,
         credits: room.credits,
         id: room.id,
+        shots: room.shots.map((shot) => ({
+          angle: shot.angle,
+          capturedAt: shot.capturedAt,
+          directionId: shot.directionId,
+          fileName: shot.fileName,
+          label: shot.label,
+          size: shot.size,
+          url: shot.url
+        })),
         name: room.name,
-        type: room.type
+        sourceMode: room.sourceMode,
+        type: room.type,
+        walkthroughVideo: room.walkthroughVideo
+          ? {
+              capturedAt: room.walkthroughVideo.capturedAt,
+              fileName: room.walkthroughVideo.fileName,
+              size: room.walkthroughVideo.size,
+              url: room.walkthroughVideo.url
+            }
+          : null
       }))
     }),
     [capturedCredits, captureSourceMode, coverageStatus, directionMode, orderedDirections, roomName, roomType, savedRooms, shots, splatUrl, superSplatViewerUrl, t, walkthroughVideo]
@@ -371,6 +412,7 @@ export function VirtualTourWorkspace() {
       return;
     }
 
+    setCaptureSourceMode("guided-photos");
     setCameraStatus("starting");
     setCameraError("");
 
@@ -452,12 +494,29 @@ export function VirtualTourWorkspace() {
     setAiReport(null);
   }
 
-  function saveRoomSet() {
+  function saveRoomSet(options: { startNext?: boolean } = {}) {
     if (!canCreateDraft) {
       return;
     }
 
     const firstShot = captureDirections.map((direction) => shots[direction.id]).find(Boolean);
+    const savedShots = captureDirections
+      .map((direction) => {
+        const shot = shots[direction.id];
+
+        if (!shot) {
+          return null;
+        }
+
+        return {
+          ...shot,
+          angle: direction.angle,
+          directionId: direction.id,
+          label: t(direction.labelKey)
+        };
+      })
+      .filter(Boolean) as SavedRoomShot[];
+    const nextRoomName = t("tour.setup.nextRoomName", { count: savedRooms.length + 2 });
 
     setSavedRooms((current) => [
       {
@@ -469,12 +528,15 @@ export function VirtualTourWorkspace() {
         credits: hasCompleteGuidedSet ? captureDirections.length : 1,
         id: crypto.randomUUID(),
         name: roomName.trim() || `${roomType} ${current.length + 1}`,
-        type: hasCompleteGuidedSet ? roomType : `${roomType} video source`
+        shots: savedShots,
+        sourceMode: hasCompleteGuidedSet ? "guided-photos" : "walkthrough-video",
+        type: hasCompleteGuidedSet ? roomType : `${roomType} video source`,
+        walkthroughVideo: walkthroughVideo ?? undefined
       },
       ...current
     ]);
     resetCurrentRoom();
-    setRoomName("");
+    setRoomName(options.startNext ? nextRoomName : "");
   }
 
   async function createTourDraft() {
@@ -697,11 +759,16 @@ export function VirtualTourWorkspace() {
                 <RotateCcw className="size-4" aria-hidden="true" />
                 {t("tour.button.reset")}
               </Button>
-              <Button onClick={saveRoomSet} disabled={!canCreateDraft}>
+              <Button onClick={() => saveRoomSet()} disabled={!canCreateDraft}>
                 <Save className="size-4" aria-hidden="true" />
                 {t("tour.button.saveRoom")}
               </Button>
             </div>
+            <Button className="mt-2 w-full" onClick={() => saveRoomSet({ startNext: true })} disabled={!canCreateDraft}>
+              <Plus className="size-4" aria-hidden="true" />
+              {t("tour.button.saveNextRoom")}
+            </Button>
+            <p className="mt-2 text-xs leading-5 text-charcoal-800">{t("tour.credits.nextRoomHelp")}</p>
           </div>
         </aside>
 
@@ -874,8 +941,40 @@ export function VirtualTourWorkspace() {
             ) : null}
 
             <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-              <div className="relative overflow-hidden rounded-md border border-silver-200 bg-charcoal-950">
-                <div className="relative aspect-[4/5] w-full sm:aspect-[16/10]">
+              <div
+                className={[
+                  cameraIsLive
+                    ? "fixed inset-0 z-[100] flex flex-col bg-charcoal-950 p-3 text-white sm:p-5"
+                    : "relative overflow-hidden rounded-md border border-silver-200 bg-charcoal-950"
+                ].join(" ")}
+              >
+                {cameraIsLive ? (
+                  <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-champagne-300">{t("tour.guided.cameraHudTitle")}</p>
+                      <h3 className="mt-1 truncate text-lg font-semibold text-white">{activeDirectionLabel}</h3>
+                      <p className="mt-1 text-xs text-silver-100">
+                        {t("tour.guide.stepStatus", { step: activeStep, total: totalSteps })} / {t("tour.guide.target")} {activeDirection.angle} deg
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        className="hidden border-white bg-white text-navy-950 hover:bg-silver-100 sm:inline-flex"
+                        disabled={cameraStatus !== "active"}
+                        onClick={captureLiveShot}
+                        variant="secondary"
+                      >
+                        <ScanLine className="size-4" aria-hidden="true" />
+                        {t("tour.button.captureAngle")}
+                      </Button>
+                      <Button variant="ghost" className="border border-white/20 bg-white/10 text-white hover:bg-white/20" onClick={stopCamera}>
+                        <VideoOff className="size-4" aria-hidden="true" />
+                        {t("tour.button.stop")}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+                <div className={cameraIsLive ? "relative min-h-0 flex-1 overflow-hidden rounded-md bg-black" : "relative aspect-[4/5] w-full sm:aspect-[16/10]"}>
                   <video
                     ref={videoRef}
                     autoPlay
@@ -883,13 +982,13 @@ export function VirtualTourWorkspace() {
                     playsInline
                     className={[
                       "absolute inset-0 size-full object-cover",
-                      cameraStatus === "active" || cameraStatus === "starting" ? "block" : "hidden"
+                      cameraIsLive ? "block" : "hidden"
                     ].join(" ")}
                   />
                   <canvas ref={canvasRef} className="hidden" />
-                  {cameraStatus === "active" || cameraStatus === "starting" ? (
+                  {cameraIsLive ? (
                     <div className="pointer-events-none absolute inset-0">
-                      <div className="absolute inset-x-6 bottom-40 top-16 rounded-md border-2 border-white/80 shadow-[0_0_0_999px_rgba(17,20,24,0.18),0_0_32px_rgba(255,255,255,0.35)] sm:inset-x-8 sm:bottom-32 sm:top-12" />
+                      <div className="absolute inset-x-5 bottom-44 top-20 rounded-md border-2 border-white/85 shadow-[0_0_0_999px_rgba(17,20,24,0.2),0_0_36px_rgba(255,255,255,0.35)] sm:inset-x-8 sm:bottom-36 sm:top-14" />
                       <div className="absolute left-3 top-3 max-w-[calc(100%-11rem)] truncate rounded-full bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-navy-950 sm:max-w-none">
                         {t("tour.guide.start")}
                       </div>
@@ -931,11 +1030,17 @@ export function VirtualTourWorkspace() {
                             </p>
                           </div>
                           <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
-                            <Button size="sm" variant="secondary" className="border-white bg-white text-navy-950 hover:bg-silver-100" onClick={captureLiveShot}>
+                            <Button
+                              size="lg"
+                              variant="secondary"
+                              className="min-h-14 border-white bg-white text-base text-navy-950 hover:bg-silver-100 sm:min-w-44"
+                              disabled={cameraStatus !== "active"}
+                              onClick={captureLiveShot}
+                            >
                               <ScanLine className="size-4" aria-hidden="true" />
                               {t("tour.button.captureAngle")}
                             </Button>
-                            <Button size="sm" variant="ghost" className="border border-white/20 bg-white/10 text-white hover:bg-white/20" onClick={stopCamera}>
+                            <Button size="lg" variant="ghost" className="min-h-14 border border-white/20 bg-white/10 text-base text-white hover:bg-white/20" onClick={stopCamera}>
                               <VideoOff className="size-4" aria-hidden="true" />
                               {t("tour.button.stop")}
                             </Button>
@@ -961,12 +1066,12 @@ export function VirtualTourWorkspace() {
                       </div>
                     </div>
                   )}
-                  {cameraStatus !== "active" && cameraStatus !== "starting" ? (
+                  {!cameraIsLive ? (
                     <div className="absolute left-3 top-3 rounded-md bg-white/90 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-navy-950">
                       {activeDirection.angle} deg
                     </div>
                   ) : null}
-                  {activeShot && cameraStatus !== "active" && cameraStatus !== "starting" ? (
+                  {activeShot && !cameraIsLive ? (
                     <button
                       type="button"
                       onClick={removeActiveShot}
@@ -1239,6 +1344,10 @@ export function VirtualTourWorkspace() {
                 <p className="text-xs text-charcoal-800">{t("tour.queue.nodesSaved", { count: savedRooms.length })}</p>
               </div>
             </div>
+            <Button className="mt-4 w-full" disabled={savedRooms.length === 0} onClick={downloadManifest}>
+              <Download className="size-4" aria-hidden="true" />
+              {t("tour.button.compileTour")}
+            </Button>
 
             <div className="mt-4 space-y-3">
               {savedRooms.length > 0 ? (
@@ -1250,6 +1359,11 @@ export function VirtualTourWorkspace() {
                     <div className="p-3">
                       <p className="font-semibold text-navy-950">{room.name}</p>
                       <p className="mt-1 text-sm text-charcoal-800">{room.type}</p>
+                      <p className="mt-2 text-xs leading-5 text-charcoal-800">
+                        {t("tour.queue.mediaCount", {
+                          count: room.sourceMode === "guided-photos" ? room.shots.length : 1
+                        })}
+                      </p>
                       <div className="mt-3 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.14em] text-charcoal-800">
                         <span>{room.credits} credits</span>
                         <span>{room.capturedAt}</span>
