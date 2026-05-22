@@ -113,8 +113,45 @@ type SavedRoomSet = {
   walkthroughVideo?: WalkthroughVideo;
 };
 
+type ManifestShot = {
+  angle?: number;
+  captured?: boolean;
+  capturedAt?: string;
+  directionId?: string;
+  fileName?: string | null;
+  label?: string;
+  size?: number | null;
+  url?: string | null;
+};
+
+type CompiledTourManifest = {
+  app?: string;
+  createdAt?: string;
+  room?: {
+    name?: string;
+    type?: string;
+  };
+  savedRooms?: Array<{
+    capturedAt?: string;
+    credits?: number;
+    id?: string;
+    name?: string;
+    shots?: ManifestShot[];
+    sourceMode?: string;
+    type?: string;
+    walkthroughVideo?: WalkthroughVideo | null;
+  }>;
+  shots?: ManifestShot[];
+  superSplat?: {
+    contentUrl?: string;
+    viewerUrl?: string;
+  };
+  workflow?: string;
+};
+
 const houseDemoSceneUrl = "https://superspl.at/scene/e721ea7c";
 const sampleSplatUrl = "https://developer.playcanvas.com/assets/toy-cat.sog";
+const alignmentTolerance = 14;
 
 function buildSuperSplatViewerUrl(contentUrl: string) {
   const trimmed = contentUrl.trim() || houseDemoSceneUrl;
@@ -134,6 +171,16 @@ function getShotPosition(angle: number) {
     left: `${50 + Math.sin(radians) * radius}%`,
     top: `${50 - Math.cos(radians) * radius}%`
   };
+}
+
+function normalizeDegrees(value: number) {
+  return ((value % 360) + 360) % 360;
+}
+
+function getAngleDelta(current: number, target: number) {
+  const difference = Math.abs(normalizeDegrees(current) - normalizeDegrees(target));
+
+  return Math.min(difference, 360 - difference);
 }
 
 function formatBytes(size: number) {
@@ -170,13 +217,21 @@ export function VirtualTourWorkspace() {
   const [aiReport, setAiReport] = useState<AiTourReport | null>(null);
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>("idle");
   const [cameraError, setCameraError] = useState("");
+  const [deviceHeading, setDeviceHeading] = useState<number | null>(null);
+  const [orientationEnabled, setOrientationEnabled] = useState(false);
+  const [compiledTour, setCompiledTour] = useState<CompiledTourManifest | null>(null);
+  const [compiledTourError, setCompiledTourError] = useState("");
   const [splatUrl, setSplatUrl] = useState(houseDemoSceneUrl);
   const [superSplatViewerUrl, setSuperSplatViewerUrl] = useState(buildSuperSplatViewerUrl(houseDemoSceneUrl));
   const captureInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const manifestInputRef = useRef<HTMLInputElement>(null);
+  const splatFileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const webglPreviewRef = useRef<HTMLDivElement>(null);
+  const headingBaselineRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
 
@@ -222,6 +277,14 @@ export function VirtualTourWorkspace() {
     orderedDirections.find((direction) => !shots[direction.id] && direction.id !== activeDirection.id);
   const nextDirectionLabel = nextDirection ? t(nextDirection.labelKey) : t("tour.guided.completeTarget");
   const cameraIsLive = cameraStatus === "active" || cameraStatus === "starting";
+  const headingDelta = deviceHeading === null ? null : getAngleDelta(deviceHeading, activeDirection.angle);
+  const headingAligned = headingDelta !== null && headingDelta <= alignmentTolerance;
+  const headingText = deviceHeading === null ? "--" : `${Math.round(deviceHeading)} deg`;
+  const headingStatusText = deviceHeading === null
+    ? t(orientationEnabled ? "tour.guide.calibrating" : "tour.guide.manualAlign")
+    : headingAligned
+      ? t("tour.guide.aligned")
+      : t("tour.guide.turnTo", { angle: activeDirection.angle });
   const activeGuidanceStep = cameraStatus === "active" ? 2 : cameraStatus === "starting" ? 1 : 0;
   const guidedWorkflowSteps = [
     {
@@ -251,6 +314,29 @@ export function VirtualTourWorkspace() {
       })),
     [orderedDirections, shots, t]
   );
+  const compiledTourPanels = useMemo(() => {
+    if (!compiledTour) {
+      return tourPanels;
+    }
+
+    const savedRoomWithShots = compiledTour.savedRooms?.find((room) => room.shots?.some((shot) => shot.url || shot.captured)) ?? null;
+    const sourceShots = savedRoomWithShots?.shots ?? compiledTour.shots ?? [];
+
+    return captureDirections.map((direction) => {
+      const shot = sourceShots.find((item) => item.directionId === direction.id || item.angle === direction.angle);
+
+      return {
+        angle: direction.angle,
+        captured: Boolean(shot?.captured ?? shot?.url ?? shot?.fileName),
+        id: direction.id,
+        label: shot?.label ?? t(direction.labelKey),
+        url: shot?.url ?? undefined
+      };
+    });
+  }, [compiledTour, t, tourPanels]);
+  const viewerPanels = compiledTour ? compiledTourPanels : tourPanels;
+  const viewerReadyCount = viewerPanels.filter((panel) => panel.captured).length;
+  const compiledTourName = compiledTour?.savedRooms?.[0]?.name ?? compiledTour?.room?.name ?? t("tour.manifest.loadedFallbackName");
 
   useEffect(() => {
     if (!cameraIsLive) {
@@ -265,9 +351,44 @@ export function VirtualTourWorkspace() {
     };
   }, [cameraIsLive]);
 
+  useEffect(() => {
+    if (!cameraIsLive) {
+      setDeviceHeading(null);
+      headingBaselineRef.current = null;
+      return;
+    }
+
+    const handleOrientation = (event: DeviceOrientationEvent) => {
+      const eventWithCompass = event as DeviceOrientationEvent & { webkitCompassHeading?: number };
+      const rawHeading = typeof eventWithCompass.webkitCompassHeading === "number" ? eventWithCompass.webkitCompassHeading : event.alpha;
+
+      if (typeof rawHeading !== "number") {
+        return;
+      }
+
+      const heading = normalizeDegrees(rawHeading);
+
+      if (headingBaselineRef.current === null) {
+        headingBaselineRef.current = heading;
+      }
+
+      setOrientationEnabled(true);
+      setDeviceHeading(normalizeDegrees(heading - headingBaselineRef.current));
+    };
+
+    window.addEventListener("deviceorientation", handleOrientation, true);
+    window.addEventListener("deviceorientationabsolute", handleOrientation, true);
+
+    return () => {
+      window.removeEventListener("deviceorientation", handleOrientation, true);
+      window.removeEventListener("deviceorientationabsolute", handleOrientation, true);
+    };
+  }, [cameraIsLive]);
+
   const manifest = useMemo(
     () => ({
       app: "Tempo Casa SmartStage",
+      createdAt: new Date().toISOString(),
       workflow: "AI Virtual Tour",
       room: {
         name: roomName,
@@ -294,7 +415,8 @@ export function VirtualTourWorkspace() {
         label: t(direction.labelKey),
         captured: Boolean(shots[direction.id]),
         fileName: shots[direction.id]?.fileName ?? null,
-        size: shots[direction.id]?.size ?? null
+        size: shots[direction.id]?.size ?? null,
+        url: shots[direction.id]?.url ?? null
       })),
       savedRooms: savedRooms.map((room) => ({
         capturedAt: room.capturedAt,
@@ -405,6 +527,41 @@ export function VirtualTourWorkspace() {
     setSuperSplatViewerUrl(buildSuperSplatViewerUrl(houseDemoSceneUrl));
   }
 
+  function handleSplatFileUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    objectUrlsRef.current.push(url);
+    setSplatUrl(url);
+    setSuperSplatViewerUrl(buildSuperSplatViewerUrl(url));
+    event.target.value = "";
+  }
+
+  async function requestOrientationPermission() {
+    if (typeof window === "undefined" || !("DeviceOrientationEvent" in window)) {
+      return;
+    }
+
+    const orientationEvent = window.DeviceOrientationEvent as typeof DeviceOrientationEvent & {
+      requestPermission?: () => Promise<"granted" | "denied">;
+    };
+
+    try {
+      if (typeof orientationEvent.requestPermission === "function") {
+        const permission = await orientationEvent.requestPermission();
+        setOrientationEnabled(permission === "granted");
+      } else {
+        setOrientationEnabled(true);
+      }
+    } catch {
+      setOrientationEnabled(false);
+    }
+  }
+
   async function startCamera() {
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraStatus("blocked");
@@ -415,6 +572,10 @@ export function VirtualTourWorkspace() {
     setCaptureSourceMode("guided-photos");
     setCameraStatus("starting");
     setCameraError("");
+    setDeviceHeading(null);
+    headingBaselineRef.current = null;
+
+    await requestOrientationPermission();
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -576,7 +737,26 @@ export function VirtualTourWorkspace() {
     }
   }
 
+  function openCompiledTour(packageData: CompiledTourManifest) {
+    setCompiledTour(packageData);
+    setCompiledTourError("");
+
+    if (packageData.superSplat?.contentUrl) {
+      setSplatUrl(packageData.superSplat.contentUrl);
+    }
+
+    if (packageData.superSplat?.viewerUrl) {
+      setSuperSplatViewerUrl(packageData.superSplat.viewerUrl);
+    }
+
+    window.setTimeout(() => {
+      webglPreviewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  }
+
   function downloadManifest() {
+    openCompiledTour(manifest);
+
     const blob = new Blob([JSON.stringify(manifest, null, 2)], {
       type: "application/json"
     });
@@ -586,6 +766,28 @@ export function VirtualTourWorkspace() {
     link.download = `tempocasa-virtual-tour-${Date.now()}.json`;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function handleManifestUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(await file.text()) as CompiledTourManifest;
+
+      if (!parsed || typeof parsed !== "object") {
+        throw new Error("Invalid manifest");
+      }
+
+      openCompiledTour(parsed);
+    } catch {
+      setCompiledTourError(t("tour.manifest.invalid"));
+    } finally {
+      event.target.value = "";
+    }
   }
 
   return (
@@ -664,6 +866,41 @@ export function VirtualTourWorkspace() {
       </section>
 
       <section className="mx-auto grid max-w-[1480px] gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[360px_minmax(0,1fr)_360px] lg:px-8 lg:py-8">
+        <div className="order-1 rounded-md border border-silver-200 bg-white p-4 shadow-panel lg:hidden">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-navy-950">{t("tour.mobile.title")}</p>
+              <p className="mt-1 text-xs leading-5 text-charcoal-800">{t("tour.mobile.body")}</p>
+            </div>
+            <div className="rounded-md bg-navy-950 px-3 py-2 text-center text-white">
+              <p className="text-lg font-semibold">{capturedCredits}/8</p>
+              <p className="text-[0.62rem] font-bold uppercase tracking-[0.14em]">{t("tour.credits.of")}</p>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <Button onClick={startCamera} disabled={cameraStatus === "starting"}>
+              {cameraStatus === "starting" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Video className="size-4" aria-hidden="true" />}
+              {t("tour.button.liveCamera")}
+            </Button>
+            <Button variant="secondary" onClick={() => videoInputRef.current?.click()}>
+              <FileVideo className="size-4" aria-hidden="true" />
+              {t("tour.video.record")}
+            </Button>
+            <Button variant="secondary" onClick={() => saveRoomSet({ startNext: true })} disabled={!canCreateDraft}>
+              <Plus className="size-4" aria-hidden="true" />
+              {t("tour.button.saveNextRoom")}
+            </Button>
+            <Button onClick={downloadManifest} disabled={completeCount === 0 && !walkthroughVideo && savedRooms.length === 0}>
+              <Box className="size-4" aria-hidden="true" />
+              {t("tour.mobile.createView")}
+            </Button>
+          </div>
+          <Button className="mt-2 w-full" variant="secondary" onClick={() => manifestInputRef.current?.click()}>
+            <UploadCloud className="size-4" aria-hidden="true" />
+            {t("tour.manifest.loadPackage")}
+          </Button>
+        </div>
+
         <aside className="order-2 space-y-5 lg:order-1">
           <div className="rounded-md border border-silver-200 bg-white p-4 shadow-panel">
             <div className="flex items-center gap-3">
@@ -944,37 +1181,11 @@ export function VirtualTourWorkspace() {
               <div
                 className={[
                   cameraIsLive
-                    ? "fixed inset-0 z-[100] flex flex-col bg-charcoal-950 p-3 text-white sm:p-5"
+                    ? "fixed inset-0 z-[100] flex flex-col bg-charcoal-950 p-0 text-white sm:p-4"
                     : "relative overflow-hidden rounded-md border border-silver-200 bg-charcoal-950"
                 ].join(" ")}
               >
-                {cameraIsLive ? (
-                  <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-champagne-300">{t("tour.guided.cameraHudTitle")}</p>
-                      <h3 className="mt-1 truncate text-lg font-semibold text-white">{activeDirectionLabel}</h3>
-                      <p className="mt-1 text-xs text-silver-100">
-                        {t("tour.guide.stepStatus", { step: activeStep, total: totalSteps })} / {t("tour.guide.target")} {activeDirection.angle} deg
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <Button
-                        className="hidden border-white bg-white text-navy-950 hover:bg-silver-100 sm:inline-flex"
-                        disabled={cameraStatus !== "active"}
-                        onClick={captureLiveShot}
-                        variant="secondary"
-                      >
-                        <ScanLine className="size-4" aria-hidden="true" />
-                        {t("tour.button.captureAngle")}
-                      </Button>
-                      <Button variant="ghost" className="border border-white/20 bg-white/10 text-white hover:bg-white/20" onClick={stopCamera}>
-                        <VideoOff className="size-4" aria-hidden="true" />
-                        {t("tour.button.stop")}
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
-                <div className={cameraIsLive ? "relative min-h-0 flex-1 overflow-hidden rounded-md bg-black" : "relative aspect-[4/5] w-full sm:aspect-[16/10]"}>
+                <div className={cameraIsLive ? "relative min-h-0 flex-1 overflow-hidden bg-black sm:rounded-md" : "relative aspect-[4/5] w-full sm:aspect-[16/10]"}>
                   <video
                     ref={videoRef}
                     autoPlay
@@ -988,64 +1199,114 @@ export function VirtualTourWorkspace() {
                   <canvas ref={canvasRef} className="hidden" />
                   {cameraIsLive ? (
                     <div className="pointer-events-none absolute inset-0">
-                      <div className="absolute inset-x-5 bottom-44 top-20 rounded-md border-2 border-white/85 shadow-[0_0_0_999px_rgba(17,20,24,0.2),0_0_36px_rgba(255,255,255,0.35)] sm:inset-x-8 sm:bottom-36 sm:top-14" />
-                      <div className="absolute left-3 top-3 max-w-[calc(100%-11rem)] truncate rounded-full bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-navy-950 sm:max-w-none">
-                        {t("tour.guide.start")}
-                      </div>
-                      <div className="absolute right-3 top-3 w-[8.5rem] rounded-md border border-white/15 bg-charcoal-950/78 p-2.5 text-white shadow-soft backdrop-blur sm:w-40 sm:p-3">
-                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-champagne-300">
-                          {t("tour.guide.stepStatus", { step: activeStep, total: totalSteps })}
-                        </p>
-                        <p className="mt-1 text-sm font-semibold">{activeDirectionLabel}</p>
-                        <p className="mt-1 text-[0.7rem] uppercase tracking-[0.14em] text-silver-100">
-                          {t("tour.guide.target")} {activeDirection.angle} deg
-                        </p>
-                        <div className="relative mt-3 aspect-square rounded-full border border-white/20 bg-white/10">
-                          <div className="absolute left-1/2 top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white" />
-                          <div
-                            className="absolute left-1/2 top-1/2 h-[42%] w-0.5 origin-bottom rounded-full bg-champagne-300"
-                            style={{ transform: `translate(-50%, -100%) rotate(${activeDirection.angle}deg)` }}
-                          />
+                      <div className="pointer-events-auto absolute left-3 right-3 top-3 flex items-start justify-between gap-2">
+                        <div className="min-w-0 rounded-full border border-white/15 bg-charcoal-950/68 px-3 py-2 text-white shadow-soft backdrop-blur">
+                          <p className="truncate text-xs font-bold uppercase tracking-[0.14em] text-champagne-300">
+                            {t("tour.guide.stepStatus", { step: activeStep, total: totalSteps })}
+                          </p>
+                          <p className="mt-0.5 truncate text-sm font-semibold">
+                            {activeDirectionLabel} / {activeDirection.angle} deg
+                          </p>
                         </div>
+                        <button
+                          type="button"
+                          onClick={stopCamera}
+                          className="interactive-surface grid size-11 shrink-0 place-items-center rounded-full border border-white/20 bg-charcoal-950/68 text-white shadow-soft backdrop-blur hover:bg-white/20"
+                          aria-label={t("tour.button.stop")}
+                        >
+                          <VideoOff className="size-5" aria-hidden="true" />
+                        </button>
                       </div>
-                      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/35 bg-charcoal-950/62 px-3 py-1.5 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-white backdrop-blur">
-                        {t("tour.guide.alignWall")}
+
+                      <div
+                        className={[
+                          "absolute left-1/2 top-1/2 size-40 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 shadow-[0_0_0_999px_rgba(17,20,24,0.12)] transition sm:size-52",
+                          headingAligned
+                            ? "border-[#80c7ab] shadow-[0_0_0_999px_rgba(17,20,24,0.1),0_0_42px_rgba(128,199,171,0.62)]"
+                            : "border-white/85 shadow-[0_0_0_999px_rgba(17,20,24,0.12),0_0_32px_rgba(255,255,255,0.28)]"
+                        ].join(" ")}
+                      />
+                      <div className="absolute left-1/2 top-1/2 grid size-20 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/30 bg-charcoal-950/50 text-center text-white backdrop-blur">
+                        <p className="text-2xl font-semibold leading-none">{activeDirection.angle}</p>
+                        <p className="mt-1 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-silver-100">deg</p>
                       </div>
                       <div
-                        className="absolute left-1/2 top-1/2 h-[72%] w-px origin-bottom bg-champagne-300/80"
+                        className={[
+                          "absolute left-1/2 top-[calc(50%-5rem)] h-10 w-0.5 origin-bottom rounded-full transition sm:top-[calc(50%-6.5rem)]",
+                          headingAligned ? "bg-[#80c7ab]" : "bg-champagne-300/85"
+                        ].join(" ")}
                         style={{ transform: `translate(-50%, -100%) rotate(${activeDirection.angle}deg)` }}
                       >
-                        <div className="absolute -top-2 left-1/2 size-4 -translate-x-1/2 rounded-full border-2 border-white bg-champagne-300 shadow-soft" />
+                        <div className="absolute -top-2 left-1/2 size-4 -translate-x-1/2 rounded-full border-2 border-white bg-current shadow-soft" />
                       </div>
-                      <div className="pointer-events-auto absolute bottom-3 left-3 right-3 rounded-md border border-white/15 bg-charcoal-950/82 p-3 text-white shadow-soft backdrop-blur">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="min-w-0">
-                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-champagne-300">{t("tour.guided.cameraHudTitle")}</p>
-                            <p className="mt-1 text-sm font-semibold">{activeDirectionLabel}</p>
-                            <p className="mt-1 text-xs leading-5 text-silver-100">
-                              {t("tour.guided.frameHint")} / {t("tour.guided.keepLevel")}
-                            </p>
-                            <p className="mt-1 text-xs leading-5 text-silver-100">
-                              {t("tour.guided.nextTarget", { label: nextDirectionLabel })}
-                            </p>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
-                            <Button
-                              size="lg"
-                              variant="secondary"
-                              className="min-h-14 border-white bg-white text-base text-navy-950 hover:bg-silver-100 sm:min-w-44"
-                              disabled={cameraStatus !== "active"}
-                              onClick={captureLiveShot}
-                            >
-                              <ScanLine className="size-4" aria-hidden="true" />
-                              {t("tour.button.captureAngle")}
-                            </Button>
-                            <Button size="lg" variant="ghost" className="min-h-14 border border-white/20 bg-white/10 text-base text-white hover:bg-white/20" onClick={stopCamera}>
-                              <VideoOff className="size-4" aria-hidden="true" />
-                              {t("tour.button.stop")}
-                            </Button>
-                          </div>
+
+                      <div className="absolute left-3 right-3 top-20 grid grid-cols-[1fr_auto] items-center gap-2 sm:left-auto sm:right-4 sm:top-20 sm:w-72">
+                        <div
+                          className={[
+                            "rounded-full border px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] shadow-soft backdrop-blur",
+                            headingAligned
+                              ? "border-[#80c7ab]/50 bg-[#80c7ab]/92 text-charcoal-950"
+                              : "border-white/15 bg-charcoal-950/62 text-white"
+                          ].join(" ")}
+                        >
+                          {headingStatusText}
                         </div>
+                        <div className="rounded-full border border-white/15 bg-charcoal-950/62 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white shadow-soft backdrop-blur">
+                          {headingText}
+                        </div>
+                      </div>
+
+                      <div className="absolute bottom-28 left-3 right-3 flex justify-center sm:bottom-32">
+                        <div className="flex max-w-full gap-1 overflow-x-auto rounded-full border border-white/15 bg-charcoal-950/68 p-1 shadow-soft backdrop-blur">
+                          {orderedDirections.map((direction, index) => {
+                            const captured = Boolean(shots[direction.id]);
+                            const selected = index === activeIndex;
+
+                            return (
+                              <button
+                                key={direction.id}
+                                type="button"
+                                onClick={() => setActiveIndex(index)}
+                                className={[
+                                  "pointer-events-auto grid min-h-9 min-w-12 place-items-center rounded-full px-2 text-[0.68rem] font-bold transition",
+                                  selected
+                                    ? headingAligned
+                                      ? "bg-[#80c7ab] text-charcoal-950"
+                                      : "bg-white text-navy-950"
+                                    : captured
+                                      ? "bg-white/18 text-white"
+                                      : "text-silver-100 hover:bg-white/10"
+                                ].join(" ")}
+                              >
+                                {captured ? <CheckCircle2 className="size-4" aria-hidden="true" /> : direction.angle}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="pointer-events-auto absolute bottom-4 left-3 right-3 flex flex-col items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={cameraStatus !== "active"}
+                          onClick={captureLiveShot}
+                          className={[
+                            "interactive-surface grid size-20 place-items-center rounded-full border-4 text-navy-950 shadow-[0_12px_36px_rgba(0,0,0,0.35)] transition sm:size-24",
+                            headingAligned
+                              ? "border-[#80c7ab] bg-[#80c7ab]"
+                              : "border-white bg-white hover:bg-silver-100",
+                            cameraStatus !== "active" ? "opacity-55" : ""
+                          ].join(" ")}
+                          aria-label={t("tour.button.captureAngle")}
+                        >
+                          <ScanLine className="size-8" aria-hidden="true" />
+                        </button>
+                        <div className="max-w-full truncate rounded-full border border-white/15 bg-charcoal-950/68 px-3 py-1.5 text-xs font-semibold text-white shadow-soft backdrop-blur">
+                          {t("tour.guided.nextTarget", { label: nextDirectionLabel })}
+                        </div>
+                        <p className="hidden rounded-full bg-charcoal-950/50 px-3 py-1 text-xs text-silver-100 backdrop-blur sm:block">
+                          {t("tour.guided.frameHint")} / {t("tour.guided.keepLevel")}
+                        </p>
                       </div>
                     </div>
                   ) : activeShot ? (
@@ -1247,34 +1508,72 @@ export function VirtualTourWorkspace() {
             </div>
 
             <div className="rounded-md border border-silver-200 bg-white p-4 shadow-panel sm:p-5">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-navy-950">{t("tour.manifest.title")}</p>
                   <p className="mt-1 text-sm leading-6 text-charcoal-800">{t("tour.manifest.body")}</p>
                 </div>
-                <Button variant="secondary" onClick={downloadManifest}>
-                  <Download className="size-4" aria-hidden="true" />
-                  JSON
-                </Button>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <Button onClick={downloadManifest} disabled={completeCount === 0 && !walkthroughVideo && savedRooms.length === 0}>
+                    <Box className="size-4" aria-hidden="true" />
+                    {t("tour.mobile.createView")}
+                  </Button>
+                  <Button variant="secondary" onClick={() => manifestInputRef.current?.click()}>
+                    <UploadCloud className="size-4" aria-hidden="true" />
+                    {t("tour.manifest.loadPackage")}
+                  </Button>
+                  <Button variant="secondary" onClick={downloadManifest}>
+                    <Download className="size-4" aria-hidden="true" />
+                    JSON
+                  </Button>
+                </div>
               </div>
+              <input
+                ref={manifestInputRef}
+                className="sr-only"
+                type="file"
+                accept="application/json,.json"
+                onChange={handleManifestUpload}
+              />
+              {compiledTourError ? (
+                <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-900">
+                  {compiledTourError}
+                </div>
+              ) : null}
+              {compiledTour ? (
+                <div className="mt-3 rounded-md border border-[#80c7ab]/40 bg-[#80c7ab]/15 p-3 text-sm leading-6 text-navy-950">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-semibold">{t("tour.manifest.loadedTitle")}</p>
+                      <p className="text-charcoal-800">
+                        {t("tour.manifest.loadedBody", { name: compiledTourName, count: viewerReadyCount })}
+                      </p>
+                    </div>
+                    <Button variant="secondary" onClick={() => setCompiledTour(null)}>
+                      <RotateCcw className="size-4" aria-hidden="true" />
+                      {t("tour.manifest.clearPackage")}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
 
-          <div className="rounded-md border border-silver-200 bg-white p-4 shadow-panel sm:p-5">
+          <div ref={webglPreviewRef} className="rounded-md border border-silver-200 bg-white p-4 shadow-panel sm:p-5">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-champagne-500">{t("tour.webgl.kicker")}</p>
                 <h2 className="mt-2 text-2xl font-semibold tracking-normal text-navy-950">{t("tour.webgl.title")}</h2>
                 <p className="mt-1 text-sm leading-6 text-charcoal-800">
-                  {t("tour.webgl.body")}
+                  {compiledTour ? t("tour.webgl.compiledBody") : t("tour.webgl.body")}
                 </p>
               </div>
               <div className="inline-flex items-center gap-2 rounded-md border border-silver-200 bg-silver-50 px-3 py-2 text-sm font-semibold text-navy-950">
                 <Box className="size-4" aria-hidden="true" />
-                {t("tour.webgl.mapped", { count: completeCount })}
+                {t("tour.webgl.mapped", { count: viewerReadyCount })}
               </div>
             </div>
-            <TourModelPreview panels={tourPanels} readyCount={completeCount} />
+            <TourModelPreview panels={viewerPanels} readyCount={viewerReadyCount} />
           </div>
 
           <div className="rounded-md border border-silver-200 bg-white p-4 shadow-panel sm:p-5">
@@ -1294,7 +1593,7 @@ export function VirtualTourWorkspace() {
               </Button>
             </div>
 
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto_auto] lg:items-end">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] lg:items-end">
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-[0.18em] text-charcoal-800">{t("tour.splat.url")}</span>
                 <span className="mt-2 flex min-h-12 items-center gap-2 rounded-md border border-silver-200 bg-white px-3 focus-within:border-navy-950 focus-within:ring-4 focus-within:ring-champagne-300/30">
@@ -1308,6 +1607,17 @@ export function VirtualTourWorkspace() {
                   />
                 </span>
               </label>
+              <Button variant="secondary" onClick={() => splatFileInputRef.current?.click()}>
+                <UploadCloud className="size-4" aria-hidden="true" />
+                {t("tour.splat.uploadFile")}
+              </Button>
+              <input
+                ref={splatFileInputRef}
+                className="sr-only"
+                type="file"
+                accept=".sog,.ply,.json,.meta.json,.lod-meta.json,application/json"
+                onChange={handleSplatFileUpload}
+              />
               <Button variant="secondary" onClick={loadHouseSuperSplat}>
                 <Home className="size-4" aria-hidden="true" />
                 {t("tour.splat.loadHouse")}
