@@ -13,7 +13,7 @@ TEMPOCASA SMARTSTAGE is a branded pilot duplicate of the AI virtual staging plat
 - OpenAI image editing API route with optional mask support
 - Cloudinary upload helper for original and generated renders
 - Before/after slider, fullscreen preview, recent project history, media library, and download panel
-- AI Virtual Tour page with guided 8-angle capture, walkthrough video source capture, OpenAI capture QA, local WebGL preview, and self-hosted SuperSplat viewer proof of concept
+- AI Virtual Tour page with guided 8-angle capture, walkthrough video source capture, OpenAI capture QA, local WebGL preview, self-hosted SuperSplat viewer proof of concept, and a configurable 3D reconstruction API adapter
 - Vercel-ready configuration and environment template
 
 ## Local Setup
@@ -54,6 +54,25 @@ Create `.env.local` from `.env.example`.
 5. Keep `OPENAI_GEOMETRY_MODEL=gpt-4o-mini` and `OPENAI_GEOMETRY_ANALYSIS=true` to run the SmartStage irregular-wall preflight before image editing.
 6. Keep `OPENAI_IMAGE_QUALITY=medium` for faster Vercel demos; switch to `high` only when render quality matters more than speed.
 
+### 3D Tour Reconstruction
+
+The virtual-tour page now has an in-app `Create 3D tour` flow. It sends a multipart request to `/api/tour/process` with:
+
+- `manifest`: room names, angles, room types, saved-room metadata, and target viewer settings
+- `mediaIndex`: mapping between files and room/angle metadata
+- `media`: the captured photo/video files
+
+For demo mode, leave `TOUR_RECONSTRUCTION_API_URL` blank and the app will load a sample SuperSplat scene after the processing step. When your API pipeline is ready, set:
+
+```bash
+TOUR_RECONSTRUCTION_API_URL=
+TOUR_RECONSTRUCTION_API_KEY=
+TOUR_RECONSTRUCTION_STATUS_URL=
+TOUR_RECONSTRUCTION_OUTPUT_FORMAT=sog
+```
+
+The provider should return JSON with at least one of `viewerUrl`, `contentUrl`, `splatUrl`, `sogUrl`, `plyUrl`, or `sceneUrl`. If it is asynchronous, return `status`, `jobId`, and optionally `statusUrl`; the app will poll and load the result when it is ready.
+
 ### Cloudinary
 
 1. Create a Cloudinary cloud.
@@ -74,8 +93,9 @@ Open `/virtual-tour` for the Tempo Casa tour workflow.
 
 - Option A captures 8 guided stills per room, starting at 12 o'clock and rotating around the space.
 - Option B captures or uploads one walkthrough video from a phone for later reconstruction testing.
+- `Create 3D tour` uploads the current capture package to the configured reconstruction API and opens the returned scene inside the viewer.
 - The SuperSplat proof viewer can load a processed `.sog`, `.ply`, `.compressed.ply`, `.meta.json`, or `.lod-meta.json` URL.
-- The current demo does not train a splat in-browser. A production rollout should add a reconstruction worker that converts the captured photo or video package into a SuperSplat/PlayCanvas asset.
+- If no reconstruction API is configured, the button uses demo mode with a sample SuperSplat scene. A true production rollout still needs a GPU reconstruction worker or third-party reconstruction API to convert captured media into a SuperSplat/PlayCanvas asset.
 
 ## Project Structure
 

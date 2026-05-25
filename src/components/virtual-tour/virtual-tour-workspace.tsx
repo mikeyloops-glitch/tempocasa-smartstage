@@ -73,6 +73,7 @@ type DirectionId = (typeof captureDirections)[number]["id"];
 type DirectionMode = "clockwise" | "counterclockwise";
 type CaptureSourceMode = "guided-photos" | "walkthrough-video";
 type CameraStatus = "idle" | "starting" | "active" | "blocked";
+type TourBuildStatus = "idle" | "uploading" | "processing" | "ready" | "failed";
 
 type AiTourReport = {
   checks?: string[];
@@ -83,6 +84,7 @@ type AiTourReport = {
 
 type CapturedShot = {
   capturedAt: string;
+  file?: File;
   fileName: string;
   size: number;
   url: string;
@@ -96,6 +98,7 @@ type SavedRoomShot = CapturedShot & {
 
 type WalkthroughVideo = {
   capturedAt: string;
+  file?: File;
   fileName: string;
   size: number;
   url: string;
@@ -127,6 +130,13 @@ type ManifestShot = {
 type CompiledTourManifest = {
   app?: string;
   createdAt?: string;
+  processing?: {
+    demo?: boolean;
+    jobId?: string;
+    message?: string;
+    provider?: string;
+    status?: string;
+  };
   room?: {
     name?: string;
     type?: string;
@@ -147,6 +157,23 @@ type CompiledTourManifest = {
     viewerUrl?: string;
   };
   workflow?: string;
+};
+
+type TourProcessResult = {
+  demo?: boolean;
+  jobId?: string;
+  message?: string;
+  output?: {
+    contentUrl?: string;
+    downloadUrl?: string;
+    fileType?: string;
+    sceneUrl?: string;
+    viewerUrl?: string;
+  };
+  progress?: number;
+  provider?: string;
+  status?: "queued" | "processing" | "ready" | "failed";
+  statusUrl?: string;
 };
 
 const houseDemoSceneUrl = "https://superspl.at/scene/e721ea7c";
@@ -197,6 +224,7 @@ function createShot(file: File, url: string): CapturedShot {
       dateStyle: "short",
       timeStyle: "short"
     }),
+    file,
     fileName: file.name || "camera-shot.jpg",
     size: file.size,
     url
@@ -214,6 +242,11 @@ export function VirtualTourWorkspace() {
   const [walkthroughVideo, setWalkthroughVideo] = useState<WalkthroughVideo | null>(null);
   const [savedRooms, setSavedRooms] = useState<SavedRoomSet[]>([]);
   const [draftStatus, setDraftStatus] = useState<"idle" | "processing" | "ready">("idle");
+  const [tourBuildStatus, setTourBuildStatus] = useState<TourBuildStatus>("idle");
+  const [tourBuildMessage, setTourBuildMessage] = useState("");
+  const [tourBuildProvider, setTourBuildProvider] = useState("");
+  const [tourBuildProgress, setTourBuildProgress] = useState<number | null>(null);
+  const [tourBuildJobId, setTourBuildJobId] = useState("");
   const [aiReport, setAiReport] = useState<AiTourReport | null>(null);
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>("idle");
   const [cameraError, setCameraError] = useState("");
@@ -231,6 +264,7 @@ export function VirtualTourWorkspace() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const webglPreviewRef = useRef<HTMLDivElement>(null);
+  const splatPreviewRef = useRef<HTMLDivElement>(null);
   const headingBaselineRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
@@ -261,6 +295,8 @@ export function VirtualTourWorkspace() {
   const hasCompleteGuidedSet = completeCount === captureDirections.length;
   const hasWalkthroughSource = Boolean(walkthroughVideo);
   const canCreateDraft = hasCompleteGuidedSet || hasWalkthroughSource;
+  const canProcessTour = canCreateDraft || savedRooms.length > 0;
+  const tourBuildBusy = tourBuildStatus === "uploading" || tourBuildStatus === "processing";
   const coverageStatus = hasCompleteGuidedSet
     ? t("tour.coverage.readyDraft")
     : hasWalkthroughSource
@@ -447,6 +483,14 @@ export function VirtualTourWorkspace() {
     [capturedCredits, captureSourceMode, coverageStatus, directionMode, orderedDirections, roomName, roomType, savedRooms, shots, splatUrl, superSplatViewerUrl, t, walkthroughVideo]
   );
 
+  function resetTourBuildState() {
+    setTourBuildStatus("idle");
+    setTourBuildMessage("");
+    setTourBuildProvider("");
+    setTourBuildProgress(null);
+    setTourBuildJobId("");
+  }
+
   function addShotFromFile(file: File) {
     const url = URL.createObjectURL(file);
     objectUrlsRef.current.push(url);
@@ -458,6 +502,7 @@ export function VirtualTourWorkspace() {
     setShots(nextShots);
     setDraftStatus("idle");
     setAiReport(null);
+    resetTourBuildState();
 
     const nextMissingAfterActive = orderedDirections.findIndex((direction, index) => index > activeIndex && !nextShots[direction.id]);
     const firstMissing = orderedDirections.findIndex((direction) => !nextShots[direction.id]);
@@ -496,6 +541,7 @@ export function VirtualTourWorkspace() {
         dateStyle: "short",
         timeStyle: "short"
       }),
+      file,
       fileName: file.name || "walkthrough-video.mp4",
       size: file.size,
       url
@@ -503,6 +549,7 @@ export function VirtualTourWorkspace() {
     setCaptureSourceMode("walkthrough-video");
     setDraftStatus("idle");
     setAiReport(null);
+    resetTourBuildState();
 
     event.target.value = "";
   }
@@ -511,6 +558,7 @@ export function VirtualTourWorkspace() {
     setWalkthroughVideo(null);
     setDraftStatus("idle");
     setAiReport(null);
+    resetTourBuildState();
   }
 
   function loadSuperSplatViewer() {
@@ -653,6 +701,7 @@ export function VirtualTourWorkspace() {
     setActiveIndex(0);
     setDraftStatus("idle");
     setAiReport(null);
+    resetTourBuildState();
   }
 
   function saveRoomSet(options: { startNext?: boolean } = {}) {
@@ -734,6 +783,212 @@ export function VirtualTourWorkspace() {
         nextAction: t("tour.button.saveRoom")
       });
       setDraftStatus("ready");
+    }
+  }
+
+  function appendTourProcessMedia(formData: FormData) {
+    const mediaIndex: Array<{
+      angle?: number;
+      directionId?: string;
+      fileName: string;
+      kind: "guided-shot" | "saved-room-shot" | "walkthrough-video" | "saved-room-video";
+      roomId?: string;
+      roomName?: string;
+      roomType?: string;
+    }> = [];
+
+    orderedDirections.forEach((direction) => {
+      const shot = shots[direction.id];
+
+      if (!shot?.file) {
+        return;
+      }
+
+      formData.append("media", shot.file, shot.fileName);
+      mediaIndex.push({
+        angle: direction.angle,
+        directionId: direction.id,
+        fileName: shot.fileName,
+        kind: "guided-shot",
+        roomName,
+        roomType
+      });
+    });
+
+    if (walkthroughVideo?.file) {
+      formData.append("media", walkthroughVideo.file, walkthroughVideo.fileName);
+      mediaIndex.push({
+        fileName: walkthroughVideo.fileName,
+        kind: "walkthrough-video",
+        roomName,
+        roomType
+      });
+    }
+
+    savedRooms.forEach((room) => {
+      room.shots.forEach((shot) => {
+        if (!shot.file) {
+          return;
+        }
+
+        formData.append("media", shot.file, shot.fileName);
+        mediaIndex.push({
+          angle: shot.angle,
+          directionId: shot.directionId,
+          fileName: shot.fileName,
+          kind: "saved-room-shot",
+          roomId: room.id,
+          roomName: room.name,
+          roomType: room.type
+        });
+      });
+
+      if (room.walkthroughVideo?.file) {
+        formData.append("media", room.walkthroughVideo.file, room.walkthroughVideo.fileName);
+        mediaIndex.push({
+          fileName: room.walkthroughVideo.fileName,
+          kind: "saved-room-video",
+          roomId: room.id,
+          roomName: room.name,
+          roomType: room.type
+        });
+      }
+    });
+
+    formData.append("mediaIndex", JSON.stringify(mediaIndex));
+  }
+
+  function applyTourProcessResult(result: TourProcessResult) {
+    const status = result.status ?? "processing";
+    const provider = result.provider ?? "3D pipeline";
+    const contentUrl = result.output?.contentUrl ?? result.output?.sceneUrl;
+    const viewerUrl = result.output?.viewerUrl ?? (contentUrl ? buildSuperSplatViewerUrl(contentUrl) : undefined);
+
+    setTourBuildProvider(provider);
+    setTourBuildJobId(result.jobId ?? "");
+    setTourBuildMessage(result.message ?? t("tour.process.processing"));
+    setTourBuildProgress(result.progress ?? (status === "ready" ? 100 : null));
+
+    if (status === "failed") {
+      setTourBuildStatus("failed");
+      return "failed";
+    }
+
+    if (status !== "ready") {
+      setTourBuildStatus(status === "queued" ? "uploading" : "processing");
+      return status;
+    }
+
+    if (contentUrl) {
+      setSplatUrl(contentUrl);
+    }
+
+    if (viewerUrl) {
+      setSuperSplatViewerUrl(viewerUrl);
+    }
+
+    openCompiledTour({
+      ...(manifest as CompiledTourManifest),
+      processing: {
+        demo: result.demo,
+        jobId: result.jobId,
+        message: result.message,
+        provider,
+        status
+      },
+      superSplat: {
+        contentUrl: contentUrl ?? manifest.superSplat.contentUrl,
+        viewerUrl: viewerUrl ?? manifest.superSplat.viewerUrl
+      }
+    });
+
+    setTourBuildStatus("ready");
+    window.setTimeout(() => {
+      splatPreviewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 180);
+
+    return "ready";
+  }
+
+  async function pollTourProcess(result: TourProcessResult) {
+    let currentResult = result;
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      if (!currentResult.jobId && !currentResult.statusUrl) {
+        setTourBuildMessage(t("tour.process.providerWorking"));
+        return;
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 4000));
+
+      const params = new URLSearchParams();
+      if (currentResult.jobId) {
+        params.set("jobId", currentResult.jobId);
+      }
+      if (currentResult.statusUrl) {
+        params.set("statusUrl", currentResult.statusUrl);
+      }
+
+      const response = await fetch(`/api/tour/process?${params.toString()}`);
+      const data = (await response.json()) as { result?: TourProcessResult; message?: string };
+
+      if (!response.ok || !data.result) {
+        throw new Error(data.message ?? t("tour.process.failed"));
+      }
+
+      currentResult = data.result;
+      const nextStatus = applyTourProcessResult(currentResult);
+
+      if (nextStatus === "ready" || nextStatus === "failed") {
+        return;
+      }
+
+      setTourBuildProgress(currentResult.progress ?? Math.min(95, 35 + attempt * 7));
+    }
+
+    setTourBuildStatus("processing");
+    setTourBuildMessage(t("tour.process.stillProcessing"));
+  }
+
+  async function processVirtualTour() {
+    if (!canProcessTour || tourBuildBusy) {
+      return;
+    }
+
+    setTourBuildStatus("uploading");
+    setTourBuildMessage(t("tour.process.uploading"));
+    setTourBuildProvider("");
+    setTourBuildProgress(12);
+    setTourBuildJobId("");
+    setCompiledTourError("");
+
+    const formData = new FormData();
+    formData.append("manifest", JSON.stringify(manifest));
+    appendTourProcessMedia(formData);
+
+    try {
+      const response = await fetch("/api/tour/process", {
+        body: formData,
+        method: "POST"
+      });
+      const data = (await response.json()) as { result?: TourProcessResult; message?: string };
+
+      if (!response.ok || !data.result) {
+        throw new Error(data.message ?? t("tour.process.failed"));
+      }
+
+      setTourBuildStatus("processing");
+      setTourBuildProgress(data.result.progress ?? 32);
+      const nextStatus = applyTourProcessResult(data.result);
+
+      if (nextStatus !== "ready" && nextStatus !== "failed") {
+        await pollTourProcess(data.result);
+      }
+    } catch (error) {
+      console.error("Virtual-tour processing failed", error);
+      setTourBuildStatus("failed");
+      setTourBuildProgress(null);
+      setTourBuildMessage(error instanceof Error ? error.message : t("tour.process.failed"));
     }
   }
 
@@ -890,9 +1145,9 @@ export function VirtualTourWorkspace() {
               <Plus className="size-4" aria-hidden="true" />
               {t("tour.button.saveNextRoom")}
             </Button>
-            <Button onClick={downloadManifest} disabled={completeCount === 0 && !walkthroughVideo && savedRooms.length === 0}>
-              <Box className="size-4" aria-hidden="true" />
-              {t("tour.mobile.createView")}
+            <Button onClick={processVirtualTour} disabled={!canProcessTour || tourBuildBusy}>
+              {tourBuildBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Box className="size-4" aria-hidden="true" />}
+              {tourBuildBusy ? t("tour.process.processingShort") : t("tour.process.createShort")}
             </Button>
           </div>
           <Button className="mt-2 w-full" variant="secondary" onClick={() => manifestInputRef.current?.click()}>
@@ -1510,13 +1765,13 @@ export function VirtualTourWorkspace() {
             <div className="rounded-md border border-silver-200 bg-white p-4 shadow-panel sm:p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-navy-950">{t("tour.manifest.title")}</p>
-                  <p className="mt-1 text-sm leading-6 text-charcoal-800">{t("tour.manifest.body")}</p>
+                  <p className="text-sm font-semibold text-navy-950">{t("tour.process.title")}</p>
+                  <p className="mt-1 text-sm leading-6 text-charcoal-800">{t("tour.process.body")}</p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-3">
-                  <Button onClick={downloadManifest} disabled={completeCount === 0 && !walkthroughVideo && savedRooms.length === 0}>
-                    <Box className="size-4" aria-hidden="true" />
-                    {t("tour.mobile.createView")}
+                  <Button onClick={processVirtualTour} disabled={!canProcessTour || tourBuildBusy}>
+                    {tourBuildBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Sparkles className="size-4" aria-hidden="true" />}
+                    {tourBuildBusy ? t("tour.process.processingShort") : t("tour.process.create")}
                   </Button>
                   <Button variant="secondary" onClick={() => manifestInputRef.current?.click()}>
                     <UploadCloud className="size-4" aria-hidden="true" />
@@ -1528,6 +1783,46 @@ export function VirtualTourWorkspace() {
                   </Button>
                 </div>
               </div>
+              {tourBuildStatus !== "idle" ? (
+                <div
+                  className={[
+                    "mt-4 rounded-md border p-4 text-sm leading-6",
+                    tourBuildStatus === "failed"
+                      ? "border-red-200 bg-red-50 text-red-900"
+                      : tourBuildStatus === "ready"
+                        ? "border-[#80c7ab]/40 bg-[#80c7ab]/15 text-navy-950"
+                        : "border-champagne-300 bg-champagne-100 text-navy-950"
+                  ].join(" ")}
+                >
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-semibold">
+                        {tourBuildStatus === "ready"
+                          ? t("tour.process.ready")
+                          : tourBuildStatus === "failed"
+                            ? t("tour.process.failed")
+                            : t("tour.process.processing")}
+                      </p>
+                      <p className="mt-1">{tourBuildMessage}</p>
+                    </div>
+                    {tourBuildProvider ? (
+                      <span className="w-fit rounded-full border border-current/20 px-3 py-1 text-xs font-bold uppercase tracking-[0.14em]">
+                        {tourBuildProvider}
+                      </span>
+                    ) : null}
+                  </div>
+                  {tourBuildProgress !== null ? (
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/70">
+                      <div className="h-full rounded-full bg-navy-950 transition-all" style={{ width: `${tourBuildProgress}%` }} />
+                    </div>
+                  ) : null}
+                  {tourBuildJobId ? (
+                    <p className="mt-2 text-xs font-semibold uppercase tracking-[0.12em] opacity-80">
+                      {t("tour.process.job")} {tourBuildJobId}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               <input
                 ref={manifestInputRef}
                 className="sr-only"
@@ -1576,7 +1871,7 @@ export function VirtualTourWorkspace() {
             <TourModelPreview panels={viewerPanels} readyCount={viewerReadyCount} />
           </div>
 
-          <div className="rounded-md border border-silver-200 bg-white p-4 shadow-panel sm:p-5">
+          <div ref={splatPreviewRef} className="rounded-md border border-silver-200 bg-white p-4 shadow-panel sm:p-5">
             <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-champagne-500">{t("tour.splat.kicker")}</p>
@@ -1654,9 +1949,9 @@ export function VirtualTourWorkspace() {
                 <p className="text-xs text-charcoal-800">{t("tour.queue.nodesSaved", { count: savedRooms.length })}</p>
               </div>
             </div>
-            <Button className="mt-4 w-full" disabled={savedRooms.length === 0} onClick={downloadManifest}>
-              <Download className="size-4" aria-hidden="true" />
-              {t("tour.button.compileTour")}
+            <Button className="mt-4 w-full" disabled={!canProcessTour || tourBuildBusy} onClick={processVirtualTour}>
+              {tourBuildBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Sparkles className="size-4" aria-hidden="true" />}
+              {tourBuildBusy ? t("tour.process.processingShort") : t("tour.process.create")}
             </Button>
 
             <div className="mt-4 space-y-3">

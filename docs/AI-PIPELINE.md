@@ -83,3 +83,45 @@ For a multi-user production release, add persistent project storage keyed by Cle
 - prompt package
 - timestamps
 - review status
+
+## Virtual Tour Reconstruction Adapter
+
+The AI Virtual Tour page now includes an option-2 provider adapter at `/api/tour/process`.
+
+### In-App Flow
+
+1. User captures 8 guided angles, records walkthrough video, or saves multiple room nodes.
+2. User taps `Create 3D tour`.
+3. The browser posts a multipart package to `/api/tour/process`.
+4. The API route forwards `manifest`, `mediaIndex`, and `media` files to `TOUR_RECONSTRUCTION_API_URL`.
+5. If the provider returns a ready `.sog`, `.ply`, scene URL, or viewer URL, the app loads it directly in the SuperSplat viewer.
+6. If the provider returns a job ID, the app polls `statusUrl` or `TOUR_RECONSTRUCTION_STATUS_URL` until the asset is ready.
+7. If no provider URL is configured, the route returns a demo scene so the product demo remains fully clickable.
+
+### Expected Provider Contract
+
+Request:
+
+- multipart `manifest`: JSON capture metadata
+- multipart `mediaIndex`: JSON file-to-angle mapping
+- multipart `media`: captured photos and videos
+- `outputFormat`: defaults to `sog`
+- `viewer`: `supersplat`
+
+Accepted ready response fields:
+
+- `viewerUrl`
+- `contentUrl`
+- `splatUrl`
+- `sogUrl`
+- `plyUrl`
+- `sceneUrl`
+
+Accepted async response fields:
+
+- `status`: `queued`, `processing`, `ready`, or `failed`
+- `jobId`
+- `statusUrl`
+- `progress`
+
+Vercel should remain the orchestration layer. True Gaussian-splat reconstruction should run in the external provider or GPU worker, not inside the Next.js serverless function.
