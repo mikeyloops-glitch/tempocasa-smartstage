@@ -34,6 +34,7 @@ import { readProjects, saveProject } from "@/lib/projects";
 import type {
   GenerationMode,
   MediaAsset,
+  PromptMode,
   ProjectRecord,
   RoomType,
   StagingApiResponse,
@@ -166,6 +167,7 @@ function AwaitingAfterPreview({
 }
 
 const generationModes: Array<{ value: GenerationMode }> = [{ value: "stage" }, { value: "empty" }, { value: "custom" }];
+const promptModes: Array<{ value: PromptMode }> = [{ value: "add-on" }, { value: "custom" }];
 const stagingRequestTimeoutMs = 70_000;
 
 function safeUploadFileName(name: string, fallback: string) {
@@ -227,18 +229,21 @@ function DashboardContent({ userName, userControl }: { userName?: string; userCo
   const [style, setStyle] = useState<StagingStyle>("Luxury Modern");
   const [stagingLevel, setStagingLevel] = useState<StagingLevel>("Luxury");
   const [generationMode, setGenerationMode] = useState<GenerationMode>("stage");
+  const [promptMode, setPromptMode] = useState<PromptMode>("add-on");
   const [customInstructions, setCustomInstructions] = useState("");
   const [appliedConfig, setAppliedConfig] = useState<{
     roomType: RoomType;
     style: StagingStyle;
     stagingLevel: StagingLevel;
     generationMode: GenerationMode;
+    promptMode: PromptMode;
     customInstructions: string;
   }>({
     roomType: "Living Room",
     style: "Luxury Modern",
     stagingLevel: "Luxury",
     generationMode: "stage",
+    promptMode: "add-on",
     customInstructions: ""
   });
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
@@ -277,11 +282,18 @@ function DashboardContent({ userName, userControl }: { userName?: string; userCo
     return () => URL.revokeObjectURL(url);
   }, [imageFile]);
 
+  useEffect(() => {
+    if (generationMode === "custom") {
+      setPromptMode("custom");
+    }
+  }, [generationMode]);
+
   const configurationDirty =
     roomType !== appliedConfig.roomType ||
     style !== appliedConfig.style ||
     stagingLevel !== appliedConfig.stagingLevel ||
     generationMode !== appliedConfig.generationMode ||
+    promptMode !== appliedConfig.promptMode ||
     customInstructions.trim() !== appliedConfig.customInstructions;
   const previewBefore = previewUrl ?? activeProject?.originalUrl ?? "/assets/smartstage-demo-before.png";
   const stagedPreviewUrl = imageFile && configurationDirty ? null : activeProject?.stagedUrl;
@@ -289,6 +301,7 @@ function DashboardContent({ userName, userControl }: { userName?: string; userCo
   const canGenerate = Boolean(imageFile) && !isGenerating;
   const hasRoomImage = Boolean(imageFile || activeProject?.originalUrl || previewUrl);
   const selectedGenerationMode = generationModes.find((mode) => mode.value === generationMode) ?? generationModes[0];
+  const selectedPromptMode = generationMode === "custom" ? "custom" : promptMode;
   const generateLabel = configurationDirty ? t("button.applyGenerate") : t("button.generate");
 
   const greeting = useMemo(() => {
@@ -321,18 +334,20 @@ function DashboardContent({ userName, userControl }: { userName?: string; userCo
     setStyle(project.style);
     setStagingLevel(project.stagingLevel);
     setGenerationMode(project.generationMode ?? "stage");
+    setPromptMode(project.promptMode ?? (project.generationMode === "custom" ? "custom" : "add-on"));
     setCustomInstructions(project.customInstructions ?? "");
     setAppliedConfig({
       roomType: project.roomType,
       style: project.style,
       stagingLevel: project.stagingLevel,
       generationMode: project.generationMode ?? "stage",
+      promptMode: project.promptMode ?? (project.generationMode === "custom" ? "custom" : "add-on"),
       customInstructions: project.customInstructions ?? ""
     });
   }
 
   function handleApplyConfiguration() {
-    const nextConfig = { roomType, style, stagingLevel, generationMode, customInstructions: customInstructions.trim() };
+    const nextConfig = { roomType, style, stagingLevel, generationMode, promptMode: selectedPromptMode, customInstructions: customInstructions.trim() };
     setAppliedConfig(nextConfig);
 
     if (imageFile) {
@@ -375,6 +390,7 @@ function DashboardContent({ userName, userControl }: { userName?: string; userCo
       const nextStyle = asset.style ?? style;
       const nextStagingLevel = asset.stagingLevel ?? stagingLevel;
       const nextGenerationMode = mode ?? asset.generationMode ?? (asset.kind === "empty" ? "stage" : "custom");
+      const nextPromptMode = asset.promptMode ?? (nextGenerationMode === "custom" ? "custom" : "add-on");
       const nextInstructions = "";
 
       handleRoomImageChange(file);
@@ -382,12 +398,14 @@ function DashboardContent({ userName, userControl }: { userName?: string; userCo
       setStyle(nextStyle);
       setStagingLevel(nextStagingLevel);
       setGenerationMode(nextGenerationMode);
+      setPromptMode(nextPromptMode);
       setCustomInstructions(nextInstructions);
       setAppliedConfig({
         roomType: nextRoomType,
         style: nextStyle,
         stagingLevel: nextStagingLevel,
         generationMode: nextGenerationMode,
+        promptMode: nextPromptMode,
         customInstructions: nextInstructions
       });
       window.location.hash = "#ai-generate";
@@ -411,11 +429,17 @@ function DashboardContent({ userName, userControl }: { userName?: string; userCo
 
     setIsGenerating(true);
     setNotice(null);
+    const effectivePromptMode = selectedPromptMode;
+    const effectiveGenerationMode: GenerationMode = effectivePromptMode === "custom" ? "custom" : generationMode;
+    if (effectiveGenerationMode !== generationMode) {
+      setGenerationMode(effectiveGenerationMode);
+    }
     const runConfig = {
       roomType,
       style,
       stagingLevel,
-      generationMode,
+      generationMode: effectiveGenerationMode,
+      promptMode: effectivePromptMode,
       customInstructions: customInstructions.trim()
     };
     const runPromptPackage = buildPromptPreview(runConfig);
@@ -426,6 +450,7 @@ function DashboardContent({ userName, userControl }: { userName?: string; userCo
     const activeStyle = runConfig.style;
     const activeStagingLevel = runConfig.stagingLevel;
     const activeGenerationMode = runConfig.generationMode;
+    const activePromptMode = runConfig.promptMode;
     const activeCustomInstructions = runConfig.customInstructions;
 
     const processingProject: ProjectRecord = {
@@ -437,6 +462,7 @@ function DashboardContent({ userName, userControl }: { userName?: string; userCo
       style: activeStyle,
       stagingLevel: activeStagingLevel,
       generationMode: activeGenerationMode,
+      promptMode: activePromptMode,
       customInstructions: activeCustomInstructions || undefined,
       status: "processing",
       fileName: imageFile.name,
@@ -457,6 +483,7 @@ function DashboardContent({ userName, userControl }: { userName?: string; userCo
       formData.append("style", activeStyle);
       formData.append("stagingLevel", activeStagingLevel);
       formData.append("generationMode", activeGenerationMode);
+      formData.append("promptMode", activePromptMode);
       formData.append("customInstructions", activeCustomInstructions);
       formData.append("projectName", processingProject.name);
 
@@ -683,15 +710,45 @@ function DashboardContent({ userName, userControl }: { userName?: string; userCo
                     </p>
                     <label className="block">
                       <span className="text-sm font-semibold text-navy-950">{t("ai.optionalPrompt")}</span>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        {promptModes.map((mode) => {
+                          const selected = mode.value === selectedPromptMode;
+
+                          return (
+                            <button
+                              key={mode.value}
+                              type="button"
+                              aria-pressed={selected}
+                              data-active={selected ? "true" : undefined}
+                              className={[
+                                "interactive-surface min-h-12 rounded-md border px-3 py-2 text-left text-sm font-semibold leading-tight",
+                                selected
+                                  ? "control-selected border-navy-950 bg-navy-950 text-white"
+                                  : "border-silver-200 bg-white text-charcoal-900 hover:border-silver-300 hover:bg-silver-50"
+                              ].join(" ")}
+                              onClick={() => {
+                                setPromptMode(mode.value);
+                                if (mode.value === "add-on" && generationMode === "custom") {
+                                  setGenerationMode("stage");
+                                } else if (mode.value === "custom") {
+                                  setGenerationMode("custom");
+                                }
+                              }}
+                            >
+                              <span className="fit-label block">{t(`ai.promptMode.${mode.value}`)}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
                       <textarea
                         className="mt-2 min-h-28 w-full resize-y rounded-md border border-silver-200 bg-white px-3 py-3 text-base leading-7 text-charcoal-950 outline-none transition focus:border-navy-950 focus:ring-2 focus:ring-champagne-300 sm:text-sm sm:leading-6"
                         maxLength={900}
-                        placeholder={t("ai.promptPlaceholder")}
+                        placeholder={selectedPromptMode === "custom" ? t("ai.promptPlaceholderCustom") : t("ai.promptPlaceholderAddon")}
                         value={customInstructions}
                         onChange={(event) => setCustomInstructions(event.target.value)}
                       />
                       <span className="mt-2 block text-sm leading-6 text-charcoal-800 sm:text-xs sm:leading-5">
-                        {t("ai.promptHelp")}
+                        {selectedPromptMode === "custom" ? t("ai.promptHelpCustom") : t("ai.promptHelpAddon")}
                       </span>
                     </label>
                     <div className="rounded-md border border-silver-200 bg-white p-3">

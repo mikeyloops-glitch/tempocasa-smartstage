@@ -27,6 +27,7 @@ export type StagingStyle =
 export type StagingLevel = "Light" | "Medium" | "Luxury";
 
 export type GenerationMode = "stage" | "empty" | "custom";
+export type PromptMode = "add-on" | "custom";
 
 export type GeometryAnalysis = {
   hasIrregularGeometry: boolean;
@@ -45,6 +46,7 @@ export type PromptPackage = {
   style: StagingStyle;
   stagingLevel: StagingLevel;
   generationMode: GenerationMode;
+  promptMode?: PromptMode;
   customInstructions?: string;
   geometryAnalysis?: GeometryAnalysis;
 };
@@ -59,6 +61,7 @@ export type ProjectRecord = {
   style: StagingStyle;
   stagingLevel: StagingLevel;
   generationMode?: GenerationMode;
+  promptMode?: PromptMode;
   customInstructions?: string;
   status: "draft" | "processing" | "ready" | "configuration_required" | "failed";
   fileName?: string;
@@ -81,6 +84,7 @@ export type MediaAsset = {
   style?: StagingStyle;
   stagingLevel?: StagingLevel;
   generationMode?: GenerationMode;
+  promptMode?: PromptMode;
   customInstructions?: string;
 };
 

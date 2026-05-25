@@ -52,6 +52,7 @@ export function saveProjectMedia(project: ProjectRecord) {
       style: project.style,
       stagingLevel: project.stagingLevel,
       generationMode: project.generationMode,
+      promptMode: project.promptMode,
       customInstructions: project.customInstructions
     }
   ];
@@ -69,6 +70,7 @@ export function saveProjectMedia(project: ProjectRecord) {
       style: project.style,
       stagingLevel: project.stagingLevel,
       generationMode: project.generationMode,
+      promptMode: project.promptMode,
       customInstructions: project.customInstructions
     });
   }

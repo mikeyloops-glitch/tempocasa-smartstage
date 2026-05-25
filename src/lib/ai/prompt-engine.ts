@@ -6,16 +6,18 @@ import {
   stagingStyles,
   styleDescriptors
 } from "@/lib/staging-options";
-import type { GenerationMode, GeometryAnalysis, PromptPackage, RoomType, StagingLevel, StagingStyle } from "@/lib/types";
+import type { GenerationMode, GeometryAnalysis, PromptMode, PromptPackage, RoomType, StagingLevel, StagingStyle } from "@/lib/types";
 
 const preservationRules = [
   "Treat the uploaded image as the locked reference frame and preserve the same crop, aspect ratio, camera position, lens perspective, room proportions, and horizon lines.",
   "CAMERA LOCK: keep the exact same camera distance, angle, lens feel, horizon, vertical lines, framing, crop, visible edges, and aspect ratio. Do not zoom out, zoom in, tilt, pan, or make the room appear farther away.",
-  "Preserve exact walls, windows, flooring, doors, ceiling height, architectural trim, structural columns, and natural lighting direction.",
+  "Preserve exact walls, windows, flooring, doors, door frames, handles, thresholds, ceiling height, ceiling plane, beams, architectural trim, structural columns, built-in openings, and natural lighting direction.",
+  "DOOR AND WINDOW LOCK: do not change the type, shape, size, position, frame material, glazing, swing, opening, architrave, trim, or hardware of any door, window, shutter, balcony door, sliding door, interior opening, or exterior opening.",
+  "FLOOR AND CEILING LOCK: keep the exact floor direction, tile or plank scale, ceiling lines, coves, beams, slopes, bulkheads, and visible edge positions.",
   "Preserve irregular architecture exactly: curved walls, angled walls, bay windows, non-square corners, sloped ceilings, alcoves, niches, diagonal partitions, and skewed perspective lines must keep their original shape and position.",
   "Preserve cabinetry, counters, appliances, plumbing fixtures, and built-ins only when the selected workflow is not explicitly removing them.",
-  "Do not create new windows, move walls, square off curved or angled walls, straighten non-orthogonal corners, alter floor patterns, change ceiling shape, change camera angle, widen the room, add side borders, or distort architectural trim.",
-  "Only modify the requested movable contents, furnishing, styling, visible finishes, or removals while keeping the original room shell aligned to the source photo.",
+  "Do not create new windows, remove windows, replace doors, move doors, move walls, square off curved or angled walls, straighten non-orthogonal corners, alter floor patterns, change ceiling shape, change camera angle, widen the room, add side borders, or distort architectural trim.",
+  "Only modify the requested movable contents, furniture, decor, styling, or explicitly requested non-structural surface finish while keeping the original room shell aligned to the source photo.",
   "Add only believable real furniture or finishes with correct scale, contact shadows, and plausible placement.",
   "Maintain professional real-estate photography aesthetics with crisp textures and trustworthy listing-ready realism.",
   "Keep the output MLS-safe and commercially deployable for luxury property marketing."
@@ -35,6 +37,15 @@ const negativePromptItems = [
   "blurry textures",
   "duplicate objects",
   "extra windows",
+  "removed windows",
+  "replaced doors",
+  "changed door style",
+  "changed door material",
+  "different door",
+  "different windows",
+  "changed window frames",
+  "moved window",
+  "moved doorway",
   "fantasy architecture",
   "moved doors",
   "changed camera angle",
@@ -70,6 +81,8 @@ const referenceLockRules = [
   "Return the same room, same camera viewpoint, same camera distance, same crop, same visible frame edges, same aspect ratio, same perspective, same wall/floor/ceiling geometry, and same architectural layout.",
   "The generated image should behave like a precise duplicate plate of the uploaded shot with only the requested content changed.",
   "Do not reinterpret the space, rotate the camera, zoom in or out, crop differently, invent adjacent rooms, add openings, remove openings, change focal length, add side margins, or change the location of windows, doors, structural beams, structural columns, moulding, sockets, or floor direction.",
+  "Doors and windows are protected architecture, not style elements. Keep every existing door, window, frame, shutter, threshold, glass panel, opening, trim, handle, and visible hardware exactly in place unless the user explicitly asks to edit only its color or finish.",
+  "Wall color, wall texture, paint, plaster, or wallpaper may be adjusted only when requested, but the wall outline, corners, openings, trim, baseboards, floor line, ceiling line, and perspective must remain unchanged.",
   "IRREGULAR GEOMETRY LOCK: if the source photo contains curved walls, angled walls, slanted partitions, non-square corners, bay windows, alcoves, niches, partial-height walls, arched openings, diagonal ceiling planes, or asymmetrical room outlines, preserve those exact contours. Do not normalize the room into a rectangular box.",
   "Furniture and finishes must conform to the detected wall angles and curves: align sofas, counters, rugs, beds, cabinets, and decor to the original perspective and wall shape rather than forcing square showroom geometry.",
   "The output must line up with the uploaded before photo in a before/after comparison slider as closely as possible.",
@@ -87,9 +100,9 @@ function buildRoomSpecificInstruction(roomType: RoomType) {
 
   if (roomType === "Kitchen") {
     return [
-      "Kitchen-specific instruction: transform dated visible cabinetry into a neat luxury minimalist kitchen while preserving the existing room footprint, wall positions, window positions, floor, camera angle, and lighting direction.",
-      "Modernize cabinet doors, handles, counters, backsplash, and visible appliance integration only where they already belong in the kitchen layout.",
-      "Keep surfaces clean and listing-ready with restrained styling, realistic cabinet scale, straight lines, believable shadows, and no structural fantasy."
+      "Kitchen-specific instruction: preserve the existing kitchen footprint, wall positions, door positions, window positions, cabinet runs, appliance positions, floor, ceiling, camera angle, and lighting direction.",
+      "Default staging should clean and style the kitchen with uncluttered counters, proportionate stools, dining pieces, decor, and practical lighting only where physically plausible.",
+      "Do not remodel, replace, resize, move, or redesign kitchen cabinetry, doors, windows, counters, splashbacks, plumbing, appliances, or built-ins unless the user explicitly requests a custom renovation-style finish change."
     ].join(" ");
   }
 
@@ -122,6 +135,10 @@ export function buildNegativePrompt() {
 
 function normalizeCustomInstructions(value?: string | null) {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, 900) : "";
+}
+
+function normalizePromptMode(value?: string | null): PromptMode {
+  return value === "custom" ? "custom" : "add-on";
 }
 
 function buildModeInstruction(mode: GenerationMode) {
@@ -163,7 +180,33 @@ function buildModeExecutionInstruction(mode: GenerationMode) {
 
   return [
     "Execution: add premium furniture, realistic televisions where appropriate, carpets, decor, lighting fixtures, warm ambient accents, and physically believable shadows.",
-    "Furniture must touch the floor, match the camera perspective, fit the room scale, and leave doors, windows, radiators, and walkways plausible."
+    "Furniture must touch the floor, match the camera perspective, fit the room scale, and leave doors, windows, radiators, cabinetry, built-ins, and walkways plausible and visibly consistent.",
+    "Do not remodel fixed architecture or fixed joinery during staging. Keep existing doors, windows, frames, ceiling, flooring, cabinet footprint, and built-in elements unchanged unless a custom prompt explicitly asks for a finish-only adjustment."
+  ].join(" ");
+}
+
+function buildCustomInstructionBlock(input: {
+  customInstructions: string;
+  promptMode: PromptMode;
+}) {
+  if (!input.customInstructions) {
+    return "";
+  }
+
+  if (input.promptMode === "custom") {
+    return [
+      `Custom prompt mode: ${input.customInstructions}.`,
+      "Treat this as the primary edit instruction, but it must still obey the strict reference lock, architecture preservation, MLS safety, realism, and camera-lock rules.",
+      "If the custom prompt requests wall color, paint, plaster, wallpaper, texture, or finish changes, apply them as surface-only edits: preserve wall shape, corners, baseboards, doors, windows, trim, floor line, ceiling line, shadows, and perspective.",
+      "If the custom prompt asks for structural changes, new openings, different doors, different windows, a changed ceiling, changed floor direction, or a new room layout, reject that part implicitly and preserve the source architecture."
+    ].join(" ");
+  }
+
+  return [
+    `Add-on prompt for the selected setup: ${input.customInstructions}.`,
+    "Use these notes only to refine the already selected room type, style, and staging level.",
+    "Allowed add-on examples include wall color, surface texture, accent paint, textile color, furniture material, decor mood, lighting warmth, and styling preferences.",
+    "Do not let add-on notes override the locked architecture, camera angle, room geometry, existing doors, windows, flooring, ceiling, structural trim, built-ins, or openings."
   ].join(" ");
 }
 
@@ -242,10 +285,12 @@ export function buildStagingPrompt(input: {
   style: StagingStyle;
   stagingLevel: StagingLevel;
   generationMode?: GenerationMode;
+  promptMode?: PromptMode | string | null;
   customInstructions?: string | null;
   geometryAnalysis?: GeometryAnalysis | null;
 }) {
   const generationMode = input.generationMode ?? "stage";
+  const promptMode = generationMode === "custom" ? "custom" : normalizePromptMode(input.promptMode);
   const customInstructions = normalizeCustomInstructions(input.customInstructions);
   const geometryAnalysis = normalizeGeometryAnalysis(input.geometryAnalysis);
 
@@ -255,7 +300,7 @@ export function buildStagingPrompt(input: {
     buildGeometryLockInstruction(geometryAnalysis),
     buildModeInstruction(generationMode),
     buildModeContext({ roomType: input.roomType, style: input.style, stagingLevel: input.stagingLevel, generationMode }),
-    customInstructions ? `Agent custom instruction: ${customInstructions}. Apply these notes as an additional constraint only when they do not conflict with the strict reference lock, MLS safety, realism, and architecture preservation.` : "",
+    buildCustomInstructionBlock({ customInstructions, promptMode }),
     "Preserve the original camera and architecture exactly: walls, windows, flooring, doors, ceiling height, room proportions, camera lens perspective, crop, frame edges, and natural lighting direction.",
     "Edit the room intelligently through inpainting-style staging. Do not regenerate the room shell.",
     buildModeExecutionInstruction(generationMode),
@@ -271,6 +316,7 @@ export function buildStagingPrompt(input: {
     style: input.style,
     stagingLevel: input.stagingLevel,
     generationMode,
+    promptMode,
     customInstructions: customInstructions || undefined,
     geometryAnalysis
   } satisfies PromptPackage;
@@ -281,6 +327,7 @@ export function buildPromptPreview(input: {
   style?: string | null;
   stagingLevel?: string | null;
   generationMode?: string | null;
+  promptMode?: string | null;
   customInstructions?: string | null;
 }) {
   const roomType = isRoomType(input.roomType) ? input.roomType : "Living Room";
@@ -288,5 +335,5 @@ export function buildPromptPreview(input: {
   const stagingLevel = isStagingLevel(input.stagingLevel) ? input.stagingLevel : "Luxury";
   const generationMode = input.generationMode === "empty" || input.generationMode === "custom" ? input.generationMode : "stage";
 
-  return buildStagingPrompt({ roomType, style, stagingLevel, generationMode, customInstructions: input.customInstructions });
+  return buildStagingPrompt({ roomType, style, stagingLevel, generationMode, promptMode: input.promptMode, customInstructions: input.customInstructions });
 }

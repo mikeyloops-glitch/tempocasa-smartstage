@@ -33,9 +33,9 @@ export const stagingLevels: StagingLevel[] = ["Light", "Medium", "Luxury"];
 export const roomDescriptors: Record<RoomType, string> = {
   "Living Room": "premium living area with a sofa layout, rug, media wall, layered lighting, and refined decor",
   Lounge: "dedicated lounge or soggiorno staging with proportionate sofa seating, coffee table, rug, media or conversation focus, soft lighting, and calm luxury decor",
-  "Living Room + Kitchen": "open-plan living and kitchen area with a coherent lounge zone, media wall or conversation seating, dining or island relationship, clean kitchen finishes, integrated lighting, and clear circulation between cooking and relaxing areas",
+  "Living Room + Kitchen": "open-plan living and kitchen area with a coherent lounge zone, media wall or conversation seating, dining or island relationship, preserved kitchen footprint and finishes, practical decor, and clear circulation between cooking and relaxing areas",
   Bedroom: "serene primary bedroom with luxury bedding, bedside lighting, understated art, and hotel-grade styling",
-  Kitchen: "neat luxury kitchen refresh with minimalist cabinetry, clean counters, integrated appliances where appropriate, warm practical lighting, and restrained listing styling",
+  Kitchen: "neat kitchen presentation with uncluttered counters, proportionate stools or dining pieces only where they fit, warm practical lighting, and restrained listing styling without remodeling fixed cabinetry or doors",
   Bathroom: "spa-like bathroom styling with towels, premium fixtures, soft lighting, and restrained accessories",
   "Studio Apartment": "space-efficient studio apartment layout with sleeping, seating, and dining zones scaled to the room",
   "Dining Room": "elegant dining setup with a proportionate table, chairs, statement light, art, and table styling",

@@ -5,7 +5,7 @@ import { analyzeRoomGeometry } from "@/lib/ai/geometry-analysis";
 import { buildStagingPrompt, isRoomType, isStagingLevel, isStagingStyle } from "@/lib/ai/prompt-engine";
 import { uploadBufferToCloudinary } from "@/lib/cloudinary";
 import { registerServerProject } from "@/lib/server/project-registry";
-import type { GenerationMode, ProjectRecord } from "@/lib/types";
+import type { GenerationMode, ProjectRecord, PromptMode } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -14,6 +14,7 @@ const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const allowedMaskTypes = new Set(["image/png"]);
 const maxBytes = 20 * 1024 * 1024;
 const generationModes = new Set<GenerationMode>(["stage", "empty", "custom"]);
+const promptModes = new Set<PromptMode>(["add-on", "custom"]);
 const imageQualities = new Set(["standard", "low", "medium", "high", "auto"]);
 
 function jsonError(message: string, status: number) {
@@ -79,6 +80,10 @@ function isGenerationMode(value: unknown): value is GenerationMode {
   return typeof value === "string" && generationModes.has(value as GenerationMode);
 }
 
+function isPromptMode(value: unknown): value is PromptMode {
+  return typeof value === "string" && promptModes.has(value as PromptMode);
+}
+
 async function fileToBuffer(file: File) {
   return Buffer.from(await file.arrayBuffer());
 }
@@ -121,6 +126,7 @@ export async function POST(request: Request) {
   const styleValue = formData.get("style");
   const stagingLevelValue = formData.get("stagingLevel");
   const generationModeValue = formData.get("generationMode");
+  const promptModeValue = formData.get("promptMode");
   const customInstructionsValue = formData.get("customInstructions");
   const projectNameValue = formData.get("projectName");
 
@@ -152,6 +158,7 @@ export async function POST(request: Request) {
   const style = isStagingStyle(styleValue) ? styleValue : "Luxury Modern";
   const stagingLevel = isStagingLevel(stagingLevelValue) ? stagingLevelValue : "Luxury";
   const generationMode = isGenerationMode(generationModeValue) ? generationModeValue : "stage";
+  const promptMode = generationMode === "custom" ? "custom" : isPromptMode(promptModeValue) ? promptModeValue : "add-on";
   const customInstructions = typeof customInstructionsValue === "string" ? customInstructionsValue : "";
   const imageBuffer = await fileToBuffer(image);
   const safeBaseName = sanitizeName(
@@ -172,6 +179,7 @@ export async function POST(request: Request) {
     style,
     stagingLevel,
     generationMode,
+    promptMode,
     customInstructions,
     geometryAnalysis
   });
@@ -200,6 +208,7 @@ export async function POST(request: Request) {
       style,
       stagingLevel,
       generationMode,
+      promptMode,
       customInstructions: promptPackage.customInstructions,
       status: "configuration_required",
       fileName: image.name,
@@ -237,6 +246,10 @@ export async function POST(request: Request) {
     size: "auto",
     n: 1
   };
+
+  if (model.startsWith("gpt-image-")) {
+    editParams.input_fidelity = "high";
+  }
 
   if (mask instanceof File && mask.size > 0) {
     const maskBuffer = await fileToBuffer(mask);
@@ -281,6 +294,7 @@ export async function POST(request: Request) {
     style,
     stagingLevel,
     generationMode,
+    promptMode,
     customInstructions: promptPackage.customInstructions,
     status: "ready",
     fileName: image.name,
